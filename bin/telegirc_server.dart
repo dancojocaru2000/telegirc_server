@@ -3,6 +3,7 @@ import 'dart:io';
 import 'database.dart';
 import 'globals.dart';
 import 'irc_socket.dart';
+import 'logging.dart';
 import 'telegirc_irc.dart';
 
 List<SocketManager> managers = [];
@@ -24,14 +25,25 @@ String ensureEnv(String varName, {bool allowEmpty = false, bool allowWhitespace 
 }
 
 void main(List<String> arguments) async {
-  Globals.instance.apiId = int.parse(ensureEnv('TDLIB_API_ID'));
-  Globals.instance.apiHash = ensureEnv('TDLIB_API_HASH');
-  Globals.instance.dbPath = Platform.environment['DB_PATH'] ?? './telegirc.sqlite';
-  Database.initialize(Globals.instance.dbPath);
+  try {
+    Globals.instance.apiId = int.parse(ensureEnv('TDLIB_API_ID'));
+    Globals.instance.apiHash = ensureEnv('TDLIB_API_HASH');
+    lInfo(function: 'main', message: 'Obtained TDLIB env');
+    Globals.instance.dbPath = Platform.environment['DB_PATH'] ?? './telegirc.sqlite';
+    Database.initialize(Globals.instance.dbPath);
+    lInfo(function: 'main', message: 'Initialized database');
+  }
+  catch (ex) {
+    lError(function: 'main', message: ex.toString());
+    rethrow;
+  }
 
   Globals.instance.unsecurePort = int.tryParse(Platform.environment['IRC_UNSAFE_PORT'] ?? '') ?? 6667;
+  lDebug(function: 'main', message: 'IRC unsecurePort: ${Globals.instance.unsecurePort}');
   Globals.instance.securePort = int.tryParse(Platform.environment['IRC_SAFE_PORT'] ?? '') ?? 6697;
+  lDebug(function: 'main', message: 'IRC securePort: ${Globals.instance.securePort}');
   Globals.instance.loginPort = int.tryParse(Platform.environment['LOGIN_PORT'] ?? '') ?? 0;
+  lDebug(function: 'main', message: 'IRC loginPort: ${Globals.instance.loginPort}');
 
   final unsecureIrcServer = await ServerSocket.bind(
     InternetAddress.anyIPv6, 
@@ -39,7 +51,7 @@ void main(List<String> arguments) async {
     shared: true,
   );
   Globals.instance.unsecurePort = unsecureIrcServer.port;
-  print('Unsecure server started on port ${Globals.instance.unsecurePort}');
+  lInfo(function: 'main', message: 'Unsecure server started on port ${Globals.instance.unsecurePort}');
   final secureIrcServer = await SecureServerSocket.bind(
     InternetAddress.anyIPv6, 
     Globals.instance.securePort, 
@@ -47,7 +59,7 @@ void main(List<String> arguments) async {
     shared: true,
   );
   Globals.instance.securePort = secureIrcServer.port;
-  print('Secure server started on port ${Globals.instance.securePort}');
+  lInfo(function: 'main', message: 'Secure server started on port ${Globals.instance.securePort}');
 
   unsecureIrcServer.map((socket) => IrcSocketWrapper(socket)).listen(onIrcConnection);
   secureIrcServer.map((socket) => IrcSocketWrapper(socket, secure: true,)).listen(onIrcConnection);

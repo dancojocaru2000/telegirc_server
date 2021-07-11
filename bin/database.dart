@@ -1,5 +1,6 @@
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 
+import 'logging.dart';
 import 'sqlite_utils.dart';
 
 const _CURRENT_DB_VERSION = 1;
@@ -14,8 +15,10 @@ class Database {
     i._db?.dispose();
     if (path == null) {
       i._db = sqlite.sqlite3.openInMemory();
+      lDebug(function: 'Database::initialize', message: 'Opened in memory');
     } else {
       i._db = sqlite.sqlite3.open(path);
+      lDebug(function: 'Database::initialize', message: 'Opened file: $path');
     }
 
     if (i._db!.checkMaster(
@@ -24,7 +27,7 @@ class Database {
         ) >
         0) {
           final dbVersion = i._db!.select('select version from telegirc_server').first['version'];
-          print('DB Version: $dbVersion');
+          lDebug(function: 'Database::initialize', message: 'Current DB version: $dbVersion');
 
           if (dbVersion > _CURRENT_DB_VERSION) {
             // Error
@@ -40,7 +43,7 @@ class Database {
       i._db!.execute('create table telegirc_server(version int)');
       i._db!.execute('insert into telegirc_server values (?)', [_CURRENT_DB_VERSION]);
 
-      print('Created DB with version $_CURRENT_DB_VERSION');
+      lInfo(function: 'Database::initialize', message: 'Created DB with version $_CURRENT_DB_VERSION');
     }
   }
 
