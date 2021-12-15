@@ -37,7 +37,7 @@ class RegisterHandler extends ServerHandler {
       command: 'JOIN',
       parameters: [signupChannel],
     ));
-    addNumeric(IrcRplTopic.withLocalHostname(nickname, signupChannel, 'Sign up to Telegirc'));
+    addNumeric(IrcRplTopic.withLocalHostname(nickname, signupChannel, 'Sign up to TelegIRC'));
     addNumeric(IrcRplNamReply.withLocalHostname(nickname, ChannelStatus.public, signupChannel, [nickname, signupBotNick]));
     addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, signupChannel));
   }
@@ -139,7 +139,7 @@ class RegisterHandler extends ServerHandler {
             await doJoin();
           }
           final prompt = [
-            'Please send your phone number using the command /PHONE +xxxxxxxx.',
+            'Please send your phone number using the command \u0002/PHONE +xxxxxxxx\u0002.',
             'Ensure your phone number is in international format.',
             'For example, an USA phone number is +1978765123, +1 representing the country code.',
           ];
@@ -171,7 +171,7 @@ class RegisterHandler extends ServerHandler {
             otherwise: (_) {},
           );
           prompt.addAll([
-            'Please send the code using the command /CODE ' + '0' * codeLength + '.',
+            'Please send the code using the command \u0002/CODE ' + '0' * codeLength + '\u0002.',
           ]);
           for (final msg in prompt) {
             add(IrcMessage(
@@ -186,7 +186,7 @@ class RegisterHandler extends ServerHandler {
           final prompt = <String>[
             'Your account is protected with a password.',
             ''
-            'Please send the password using the command /PASSWORD ${aswp.passwordHint}.',
+            'Please send the password using the command \u0002/PASSWORD ${aswp.passwordHint}\u0002.',
           ];
           for (final msg in prompt) {
             add(IrcMessage(
@@ -200,7 +200,7 @@ class RegisterHandler extends ServerHandler {
         isAuthorizationStateWaitRegistration: (aswr) async {
           final prompt = <String>[
             'Your do not have a Telegram account and need to register.',
-            'For the moment, this cannot be done through Telegirc.',
+            'For the moment, this cannot be done through TelegIRC.',
             'Please register using another Telegram application and then submit your phone number again.',
           ];
           for (final msg in prompt) {
@@ -213,7 +213,38 @@ class RegisterHandler extends ServerHandler {
           state = _RegisterState.waitingPhone;
         },
         isAuthorizationStateReady: (_) async {
+          final user = await tdSend(td_fn.GetMe()) as td_o.User;
+          final prompt = <String>[
+            'Registration successful!',
+            'Welcome to TelegIRC, ${user.firstName} ${user.lastName}!',
+            '',
+            '\u0002Username\u0002: ${user.username}',
+            '\u0002Phone number\u0002: ${user.phoneNumber}',
+            '\u0002User ID\u0002: ${user.id}',
+            '',
+            'Join \u0002#telegirc-help\u0002 to learn how to use TelegIRC.',
+            '',
+            '\u0002Important!\u0002',
+            'Please take some time to secure your account by setting a password!',
+            'Join \u0002#a\u0002 to proceed.',
+            '',
+            'You will automatically leave from this channel in 30 seconds.',
+          ];
+          for (final msg in prompt) {
+            add(IrcMessage(
+              prefix: signupBotNick,
+              command: 'PRIVMSG',
+              parameters: [signupChannel, msg],
+            ));
+          }
           onRegistered();
+          Future.delayed(const Duration(seconds: 30), () async {
+            add(IrcMessage(
+              prefix: nickname,
+              command: 'PART',
+              parameters: [signupChannel],
+            ));
+          });
           onUnregisterRequest?.call(this);
         },
         otherwise: (_) => Future.value(null),

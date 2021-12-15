@@ -26,6 +26,12 @@ class IrcErrAlreadyRegistered extends IrcNumericReply {
     => IrcErrAlreadyRegistered(Platform.localHostname, client);
 }
 
+class IrcErrNoSuchChannel extends IrcNumericReply {
+  IrcErrNoSuchChannel(String serverName, String client, String channel) : super(serverName, 403, [client, channel, 'No such channel'], messageName: 'ERR_NOSUCHCHANNEL',);
+  factory IrcErrNoSuchChannel.withLocalHostname(String client, String channel)
+    => IrcErrNoSuchChannel(Platform.localHostname, client, channel);
+}
+
 class IrcException implements Exception {
   final IrcMessage message;
 

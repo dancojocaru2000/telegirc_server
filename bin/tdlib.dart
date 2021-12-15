@@ -9,7 +9,7 @@ import 'package:ffi/ffi.dart';
 import 'package:tdlib_types/base.dart' show TdBase;
 import 'package:tdlib_types/abstract.dart' as a show OptionValue;
 import 'package:tdlib_types/obj.dart' as o show Error, UpdateOption, OptionValueEmpty, AuthorizationStateClosed;
-import 'package:tdlib_types/fn.dart' show TdFunction, TestCallEmpty;
+import 'package:tdlib_types/fn.dart' show Close, LogOut, TdFunction, TestCallEmpty;
 
 class TdClient {
   static late SendPort _sendPort;
@@ -204,9 +204,8 @@ class TdClient {
     return result;
   } 
 
-  Future<void> close() => sendRaw({
-    '@type': 'close'
-  });
+  Future<void> close() => send(Close());
+  Future<void> logout() => send(LogOut());
 
   @override
   String toString() {

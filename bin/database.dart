@@ -4,7 +4,7 @@ import 'package:uuid/uuid.dart';
 import 'logging.dart';
 import 'sqlite_utils.dart';
 
-const _CURRENT_DB_VERSION = 1;
+const _CURRENT_DB_VERSION = 2;
 
 class Database {
   sqlite.Database? _db;
@@ -58,7 +58,18 @@ class Database {
 
   static void migrate(int currentVersion) {
     if (currentVersion == 1) {
-      Database._instance._db!.execute('drop table telegirc_server');
+      final db = Database._instance._db!;
+      lDebug(function: 'Database::migrate', message: 'Creating new_users');
+      db.execute('create table new_users(id integer primary key autoincrement, dbId text not null unique, baseNick text not null unique, password text not null)');
+      for (final row in db.select('select * from users')) {
+        db.execute('insert into new_users(dbId, baseNick, password) values (?, ?, ?)', [row['dbId'], row['baseNick'], '']);
+      }
+      lDebug(function: 'Database::migrate', message: 'Dropping users');
+      db.execute('drop table users');
+      lDebug(function: 'Database::migrate', message: 'Renaming new_users to users');
+      db.execute('alter table new_users rename to users');
+
+      db.execute('update telegirc_server set version = 2');
     }
   }
 
@@ -79,6 +90,7 @@ class Database {
               id: row['id'],
               dbId: row['dbId'],
               baseNick: row['baseNick'],
+              loginPassword: row['password'], 
             ))
         .toList(growable: false);
   }
@@ -104,13 +116,21 @@ class Database {
       id: row['id'],
       dbId: row['dbId'], 
       baseNick: row['baseNick'],
+      loginPassword: row['password'],
     );
   }
 
   UserEntry addUser(UserEntry entry) {
     _ensureInit();
     final db = _db!;
-    db.execute('insert into users(dbId, baseNick) values (?, ?)', [entry.dbId, entry.baseNick]);
+    db.execute(
+      'insert into users(dbId, baseNick, password) values (?, ?, ?)',
+      [
+        entry.dbId,
+        entry.baseNick,
+        entry.loginPassword,
+      ],
+    );
     return getUser(baseNick: entry.baseNick)!;
   }
 
@@ -134,11 +154,13 @@ class UserEntry {
   final int id;
   final String dbId;
   final String baseNick;
+  final String loginPassword;
 
   UserEntry({
     this.id = -1,
     required this.dbId,
     required this.baseNick,
+    required this.loginPassword,
   });
 }
 

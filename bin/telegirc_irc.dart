@@ -8,6 +8,9 @@ import 'database.dart';
 import 'globals.dart';
 import 'irc.dart';
 import 'irc_errors.dart';
+import 'irc_handlers/auth_handler.dart';
+import 'irc_handlers/help_handler.dart';
+import 'irc_handlers/logout_handler.dart';
 import 'irc_handlers/register_handler.dart';
 import 'irc_replies.dart';
 import 'irc_socket.dart';
@@ -23,6 +26,9 @@ class SocketManager {
   final void Function(SocketManager) onDisconnect;
   SocketManagerState _state;
 
+  StreamSubscription? _socket;
+  StreamSubscription? _tdlib;
+
   SocketManagerState get state => _state;
 
   String? password;
@@ -32,14 +38,19 @@ class SocketManager {
   late String dbId;
   UserEntry? dbUserEntry;
   TdClient? tdClient;
+  bool authenticated = false;
 
   final Completer<void> _telegramConnectionCompleter = Completer();
-  Future<void> get telegramConnectionFuture => _telegramConnectionCompleter.future;
+  Future<void> get telegramConnectionFuture =>
+      _telegramConnectionCompleter.future;
 
   late List<CommandHandler> _normalHandlers;
+  late List<CommandHandler> _noMatchHandlers;
 
-  late final List<ServerHandler> _generalHandlers = [
-    RegisterHandler(
+  late final List<ServerHandler> _generalHandlers = [];
+
+  void addRegisterHandler() {
+    _generalHandlers.add(RegisterHandler(
       onUnregisterRequest: (h) => _generalHandlers.remove(h),
       add: add,
       addNumeric: addNumeric,
@@ -47,47 +58,118 @@ class SocketManager {
       tdSend: (fn) => tdClient!.send(fn),
       onRegistered: () {
         dbUserEntry = Database.instance.addUser(UserEntry(
-          dbId: dbId, 
+          dbId: dbId,
           baseNick: nickname,
+          loginPassword: '',
         ));
+        authenticated = true;
       },
-    ),
-  ];
+    ));
+  }
 
-  SocketManager(this.socketWrapper, {required this.onDisconnect}) : _state = SocketManagerState.waitingPassOrNick {
-    socketWrapper.stream.listen(
+  void addLoggedInHandlers() {
+    _generalHandlers.addAll([
+      LogoutHandler(
+        add: add,
+        addNumeric: addNumeric,
+        nickname: () => nickname,
+        tdSend: (fn) => tdClient!.send(fn),
+        onLogout: onLogout,
+      ),
+      HelpHandler(
+        add: add,
+        addNumeric: addNumeric,
+        nickname: () => nickname,
+        tdSend: (fn) => tdClient!.send(fn),
+      ),
+      AuthHandler(
+        add: add,
+        addNumeric: addNumeric,
+        nickname: () => nickname,
+        tdSend: (fn) => tdClient!.send(fn),
+      ),
+    ]);
+  }
+
+  SocketManager(this.socketWrapper, {required this.onDisconnect})
+      : _state = SocketManagerState.waitingPassOrNick {
+    _socket = socketWrapper.stream.listen(
       (message) async {
         try {
           await onMessage(message);
-        }
-        on IrcException catch (e) {
+        } on IrcException catch (e) {
           add(e.message);
         }
-      }, 
+      },
       onError: onError,
+      onDone: () => onDisconnect(this),
     );
     _normalHandlers = [
-      CommandHandler.normal(command: 'PASS', handler: () => throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
-      CommandHandler.normal(command: 'USER', handler: () => throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
-      CommandHandler.async(command: 'MOTD', handler: sendMotd),
-      CommandHandler.async(command: 'LUSERS', handler: sendLusers),
+      CommandHandler.normal(
+          command: 'PASS',
+          handler: (_) =>
+              throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
+      CommandHandler.normal(
+          command: 'USER',
+          handler: (_) =>
+              throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
+      CommandHandler.async(command: 'MOTD', handler: (_) => sendMotd()),
+      CommandHandler.async(command: 'LUSERS', handler: (_) => sendLusers()),
+    ];
+    _noMatchHandlers = [
+      CommandHandler.normal(command: 'JOIN', handler: (msg) {
+        throw IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]);
+      }),
+      CommandHandler.normal(command: 'PART', handler: (msg) {
+        throw IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]);
+      }),
     ];
   }
 
   void add(IrcMessage message) {
     // Logging
     if (message.command != 'PING' && message.command != 'PONG') {
-      lDebug(function: 'SocketManager.add', message: '${socketWrapper.innerSocket.remoteAddress} <- ${message.displayCommand}');
+      lDebug(
+          function: 'SocketManager.add',
+          message:
+              '${socketWrapper.innerSocket.remoteAddress} <- ${message.displayCommand}');
     }
     socketWrapper.add(message);
   }
 
   void addNumeric(IrcNumericReply reply) => add(reply.ircMessage);
 
+  void onLogout() {
+    lInfo(function: 'SocketManager.onLogout', message: 'Logging out');
+    add(IrcMessage(
+        command: 'ERROR',
+        parameters: ['Logging out... Reconnect to login again.']));
+    if (dbUserEntry != null) {
+      lDebug(function: 'SocketManager.onLogout', message: 'Removing user from database');
+      Database.instance.logout(dbUserEntry!);
+    }
+    if (tdClient == null) {
+      lDebug(function: 'SocketManager.onLogout', message: 'Logging out of tdlib');
+      tdClient!.logout();
+    }
+    onDisconnect(this);
+  }
+
+  void dispose() {
+    lDebug(function: 'SocketManager.dispose', message: 'Disposing');
+    tdClient?.close();
+    tdClient = null;
+    _socket?.cancel();
+    _tdlib?.cancel();
+  }
+
   Future onMessage(IrcMessage message) async {
     // Logging
     if (message.command != 'PING' && message.command != 'PONG') {
-      lDebug(function: 'SocketManager.onMessage', message: '${socketWrapper.innerSocket.remoteAddress} -> ${message.displayCommand}');
+      lDebug(
+          function: 'SocketManager.onMessage',
+          message:
+              '${socketWrapper.innerSocket.remoteAddress} -> ${message.displayCommand}');
     }
 
     validateMessage(message);
@@ -97,13 +179,12 @@ class SocketManager {
       return;
     }
 
-    switch(_state) {
+    switch (_state) {
       case SocketManagerState.waitingPassOrNick:
         if (message.command == 'PASS') {
           password = message.parameters[0];
           _state = SocketManagerState.waitingNick;
-        }
-        else if (message.command == 'NICK') {
+        } else if (message.command == 'NICK') {
           nickname = message.parameters[0];
           _state = SocketManagerState.waitingUser;
         }
@@ -129,21 +210,39 @@ class SocketManager {
           }
           handled = true;
           if (handler.awaitable) {
-            final future = handler.handler as Future Function();
-            await future();
-          }
-          else {
-            handler.handler();
+            final future = handler.handler as Future Function(IrcMessage);
+            await future(message);
+          } else {
+            handler.handler(message);
           }
         }
-        for (final handler in _generalHandlers) {
+        final hdlCpy = _generalHandlers.toList(growable: false);
+        for (final handler in hdlCpy) {
           if (await handler.handleIrcMessage(message)) {
             handled = true;
           }
         }
         if (!handled) {
-          lError(function: 'SocketManager.onMessage', message: 'Unknown command: $message');
-          throw IrcException.fromNumeric(IrcErrUnknownCommand.withLocalHostname(nickname, message.command));
+          // Try finding specialized failure handlers
+          for (final handler in _noMatchHandlers) {
+            if (handler.command != message.command) {
+              continue;
+            }
+            handled = true;
+            if (handler.awaitable) {
+              final future = handler.handler as Future Function(IrcMessage);
+              await future(message);
+            } else {
+              handler.handler(message);
+            }
+          }
+        }
+        if (!handled) {
+          lError(
+              function: 'SocketManager.onMessage',
+              message: 'Unknown command: $message');
+          throw IrcException.fromNumeric(IrcErrUnknownCommand.withLocalHostname(
+              nickname, message.command));
         }
         break;
       case SocketManagerState.disconnected:
@@ -157,7 +256,8 @@ class SocketManager {
         isUpdateAuthorizationState: (uas) async {
           await uas.authorizationState!.match(
             isAuthorizationStateWaitTdlibParameters: (_) async {
-              await tdClient!.send(td_fn.SetTdlibParameters(parameters: td_o.TdlibParameters(
+              await tdClient!.send(td_fn.SetTdlibParameters(
+                  parameters: td_o.TdlibParameters(
                 apiHash: Globals.instance.apiHash,
                 apiId: Globals.instance.apiId,
                 applicationVersion: Globals.applicationVersion,
@@ -176,20 +276,18 @@ class SocketManager {
               )));
             },
             isAuthorizationStateWaitEncryptionKey: (_) async {
-              await tdClient!.send(td_fn.CheckDatabaseEncryptionKey(encryptionKey: Uint8List.fromList([])));
+              await tdClient!.send(td_fn.CheckDatabaseEncryptionKey(
+                  encryptionKey: Uint8List.fromList([])));
             },
             isAuthorizationStateReady: (_) async {
               _telegramConnectionCompleter.complete();
+              addLoggedInHandlers();
             },
             isAuthorizationStateLoggingOut: (_) {
-              add(IrcMessage(
-                command: 'ERROR',
-                parameters: ['Logging out... Reconnect to login again.']
-              ));
-              if (dbUserEntry != null) {
-                Database.instance.logout(dbUserEntry!);
-              }
-              onDisconnect(this);
+              onLogout();
+            },
+            isAuthorizationStateWaitPhoneNumber: (_) {
+              addRegisterHandler();
             },
             otherwise: (_) => Future.value(null),
           );
@@ -204,22 +302,26 @@ class SocketManager {
     switch (message.command) {
       case 'PASS':
         if (message.parameters.isEmpty) {
-          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, message.command));
+          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(
+              nickname, message.command));
         }
         break;
       case 'NICK':
         if (message.parameters.isEmpty) {
-          throw IrcException.fromNumeric(IrcErrNoNicknameGiven.withLocalHostname(nickname));
+          throw IrcException.fromNumeric(
+              IrcErrNoNicknameGiven.withLocalHostname(nickname));
         }
         break;
       case 'USER':
         if (message.parameters.length < 4) {
-          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, message.command));
+          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(
+              nickname, message.command));
         }
         break;
       case 'JOIN':
         if (message.parameters.isEmpty) {
-          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, message.command));
+          throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(
+              nickname, message.command));
         }
         break;
     }
@@ -229,13 +331,17 @@ class SocketManager {
     dbUserEntry = Database.instance.getUser(baseNick: nickname);
     if (dbUserEntry != null) {
       dbId = dbUserEntry!.dbId;
-    }
-    else {
+      if (dbUserEntry!.loginPassword == '' || dbUserEntry!.loginPassword == password) {
+        authenticated = true;
+      }
+    } else {
       dbId = Database.instance.newUserDbId();
     }
     tdClient = await TdClient.newClient();
-    lInfo(function: 'SocketManager.validateConnection', message: 'Created tdClient: $tdClient');
-    tdClient!.updateStream.listen(
+    lInfo(
+        function: 'SocketManager.validateConnection',
+        message: 'Created tdClient: $tdClient');
+    _tdlib = tdClient!.updateStream.listen(
       onTdEvent,
       onError: (error) {
         lError(function: 'TdClient.updateStream...', message: error);
@@ -243,7 +349,8 @@ class SocketManager {
     );
 
     addNumeric(IrcRplWelcome.withDefaultMessage(nickname));
-    addNumeric(IrcRplYourHost.withLocalHostname(nickname, Globals.instance.version));
+    addNumeric(
+        IrcRplYourHost.withLocalHostname(nickname, Globals.instance.version));
     addNumeric(IrcRplCreated.withLocalHostname(nickname));
 
     await sendLusers();
@@ -261,7 +368,7 @@ class SocketManager {
       lines = Stream.fromIterable([
         'Hello, guest!',
         '',
-        if (!socketWrapper.secure) ... [
+        if (!socketWrapper.secure) ...[
           '',
           'WARNING: Please be advised that you are currently connected through',
           'an unsecure, plain tedbIdxt connection. Anybody can read all the data',
@@ -276,14 +383,12 @@ class SocketManager {
           '',
           'You will be unable to connect to Telegram and continue the setup',
           'through this connection.',
-        ]
-        else ... [
+        ] else ...[
           '',
-          'Please join the #telegirc-signup channel to proceed logging in to Telegram.'
+          'Please join the \u0002#telegirc-signup\u0002 channel to proceed logging in to Telegram.'
         ],
       ]);
-    }
-    else {
+    } else {
       lines = () async* {
         yield 'Hello!';
         yield '';
@@ -299,20 +404,34 @@ class SocketManager {
             yield line;
           }
         }
-        yield '';
         yield 'Please wait for connection to Telegram servers...';
-        
+
         await telegramConnectionFuture;
 
         final telegramUser = await tdClient!.send(td_fn.GetMe()) as td_o.User;
 
         yield '';
-        yield 'Hello, ${telegramUser.firstName} ${telegramUser.lastName}!';
+        final usernameDisplay = telegramUser.username.isEmpty ? '' : '\u0002 (\u0002@${telegramUser.username}\u0002)\u0002';
+        yield 'Hello, \u0002${telegramUser.firstName} ${telegramUser.lastName}$usernameDisplay\u0002!';
         yield '';
+
+        if (!authenticated) {
+          yield 'You are not authenticated!';
+          yield 'You will soon join \u0002#a\u0002. Please follow the instructions there.';
+          yield '';
+        }
+        else if (dbUserEntry!.loginPassword.isEmpty) {
+          yield '\u0002Important!\u0002';
+          yield 'You do not have a password set!';
+          yield 'You will soon join \u0002#a\u0002.';
+          yield 'Please follow the instructions there to set a password and secure your account.';
+          yield '';
+        }
 
         final usefulCommandsLines = [
           'Some useful custom commands:',
-          '  LIST-CHATS == Lists all chats and custom IDs that can be used to join the chat via IRC',
+          '  /LIST-CHATS == Lists all chats and custom IDs that can be used to join the chat via IRC',
+          'Join \u0002#telegirc-help\u0002 for more.',
         ];
         for (final line in usefulCommandsLines) {
           yield line;
@@ -329,14 +448,14 @@ class SocketManager {
 
   Future sendLusers() async {
     addNumeric(IrcRplLUserClient.withLocalHostname(
-      nickname, 
-      users: 1, 
-      services: 0, 
+      nickname,
+      users: 1,
+      services: 0,
       servers: 1,
     ));
     addNumeric(IrcRplLUserMe.withLocalHostname(
-      nickname, 
-      clients: 1, 
+      nickname,
+      clients: 1,
       servers: 1,
     ));
   }
@@ -349,11 +468,15 @@ class SocketManager {
 
 class CommandHandler {
   final String command;
-  final dynamic Function() handler;
+  final dynamic Function(IrcMessage) handler;
   final bool awaitable;
 
-  CommandHandler.normal({required this.command, required this.handler}) : awaitable = false;
-  CommandHandler.async({required this.command, required Future Function() handler}) : handler = handler, awaitable = true;
+  CommandHandler.normal({required this.command, required this.handler})
+      : awaitable = false;
+  CommandHandler.async(
+      {required this.command, required Future Function(IrcMessage) handler})
+      : handler = handler,
+        awaitable = true;
 }
 
 enum SocketManagerState {

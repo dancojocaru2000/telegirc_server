@@ -83,6 +83,8 @@ void onIrcConnection(IrcSocketWrapper socket) {
   final manager = SocketManager(
     socket,
     onDisconnect: (mgr) {
+      lDebug(function: 'onIrcConnection/manager->onDisconnect', message: 'Disconnect');
+      mgr.dispose();
       socket.close();
       managers.remove(mgr);
     },

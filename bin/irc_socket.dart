@@ -21,11 +21,13 @@ class IrcSocketWrapper {
 
   String _buffer;
 
+  late final StreamSubscription _innerSocketSubscription;
+
   IrcSocketWrapper(Socket wrappedSocket, {this.secure = false,})
     : innerSocket = wrappedSocket,
       _controller = StreamController(),
       _buffer = '' {
-    innerSocket.listen(
+    _innerSocketSubscription = innerSocket.listen(
       _onSocketMessageReceived,
       onError: (error, st) => _controller.addError(error, st),
       onDone: () => _controller.close(),
@@ -56,5 +58,8 @@ class IrcSocketWrapper {
     innerSocket.addIrcMessage(message);
   }
 
-  Future<dynamic> close() => _controller.close();
+  Future<dynamic> close() {
+    _innerSocketSubscription.cancel();
+    return _controller.close();
+  }
 }
