@@ -9,9 +9,12 @@ environment:
 
 dependencies:
   ffi: ^1.1.0
-  sqlite3: ^1.1.2
+  sqlite3: ^1.4.0
+  uuid: ^3.0.5
   tdlib_types:
-    git: https://github.com/dancojocaru2000/dart_tdlib_types
+    git: 
+      url: https://github.com/dancojocaru2000/dart_tdlib_types
+      ref: v1.7.0
 #   path: ^1.8.0
 
 dev_dependencies:

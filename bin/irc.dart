@@ -6,6 +6,8 @@ class IrcMessage {
   final String? _customCommandName;
   final List<String> parameters;
 
+  String get displayCommand => _customCommandName ?? command;
+
   IrcMessage({
     this.prefix,
     required this.command,
@@ -105,22 +107,45 @@ class IrcMessage {
     }
     return result;
   }
+  
+  String get ircFormat {
+    var result = '';
+    if (prefix != null) {
+      result += ':$prefix ';
+    }
+    result += command;
+    if (parameters.isNotEmpty) {
+      for (var param in parameters.sublist(0, parameters.length - 1)) {
+        result += ' $param';
+      }
+      final lastParam = parameters.last;
+      result += ' :$lastParam';
+    }
+    return result;
+  }
 }
 
 
 class IrcMessagePing extends IrcMessage {
   IrcMessagePing(String serverName) : super(
-    command: 'PONG',
+    command: 'PING',
     parameters: [serverName]
   );
   factory IrcMessagePing.withLocalHostname() => IrcMessagePing(Platform.localHostname);
 }
 class IrcMessagePong extends IrcMessage {
-  IrcMessagePong(String serverName) : super(
+  IrcMessagePong(String serverName, List<String> parameters) : super(
+    prefix: serverName,
     command: 'PONG',
-    parameters: [serverName]
+    parameters: parameters,
   );
-  factory IrcMessagePong.withLocalHostname() => IrcMessagePong(Platform.localHostname);
+  IrcMessagePong.replyToUser(String serverName, String nickname) : super (
+    prefix: serverName,
+    command: 'PONG',
+    parameters: [serverName, nickname],
+  );
+  factory IrcMessagePong.withLocalHostname(List<String> parameters) => IrcMessagePong(Platform.localHostname, parameters);
+  factory IrcMessagePong.hostnameReplyToUser(String nickname) => IrcMessagePong.replyToUser(Platform.localHostname, nickname);
 }
 
 class IrcNumericReply {
@@ -135,4 +160,11 @@ class IrcNumericReply {
     => IrcNumericReply(Platform.localHostname, message, parameters);
 
   IrcMessage get ircMessage => IrcMessage.numeric(serverName, message, parameters: parameters, messageName: messageName,);
+
+  @override
+  String toString() {
+    return 'IrcNumericReply($ircMessage)';
+  }
+
+  String get ircFormat => ircMessage.ircFormat;
 }

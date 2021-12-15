@@ -13,17 +13,21 @@ void log({required String function, required String message, LogType type = LogT
   }
 
   if (useColor) {
-    stderr.write('\e[${type.ansiColor}m');
+    stderr.write('\x1b[${type.ansiColor}m');
   }
   stderr.write(type.badge);
   stderr.write(' ');
   stderr.write('($function)');
   if (useColor) {
-    stderr.write('\e30m');
+    stderr.write('\x1b[39m');
   }
   stderr.write(' ');
 
-  stderr.writeln(message);
+  stderr.write(message);
+  // if (useColor) {
+  //   stderr.write('\x1b[39m');
+  // }
+  stderr.writeln();
 }
 
 LogType get _maxLogType {

@@ -4,7 +4,11 @@ import 'database.dart';
 import 'globals.dart';
 import 'irc_socket.dart';
 import 'logging.dart';
+import 'tdlib.dart';
 import 'telegirc_irc.dart';
+
+import 'package:tdlib_types/fn.dart' as td_fn;
+import 'package:tdlib_types/obj.dart' as td_o;
 
 List<SocketManager> managers = [];
 
@@ -29,7 +33,12 @@ void main(List<String> arguments) async {
     Globals.instance.apiId = int.parse(ensureEnv('TDLIB_API_ID'));
     Globals.instance.apiHash = ensureEnv('TDLIB_API_HASH');
     lInfo(function: 'main', message: 'Obtained TDLIB env');
-    Globals.instance.dbPath = Platform.environment['DB_PATH'] ?? './telegirc.sqlite';
+    Globals.instance.dbDir = Platform.environment['DB_PATH'] ?? '.';
+    if (Globals.instance.dbDir?.trim().isEmpty == true) {
+      Globals.instance.dbDir = null;
+    }
+    lDebug(function: 'main', message: 'Db dir: ${Globals.instance.dbDir}');
+    lDebug(function: 'main', message: 'Db path: ${Globals.instance.dbPath}');
     Database.initialize(Globals.instance.dbPath);
     lInfo(function: 'main', message: 'Initialized database');
   }
@@ -45,6 +54,8 @@ void main(List<String> arguments) async {
   Globals.instance.loginPort = int.tryParse(Platform.environment['LOGIN_PORT'] ?? '') ?? 0;
   lDebug(function: 'main', message: 'IRC loginPort: ${Globals.instance.loginPort}');
 
+  await TdClient.execute(td_fn.SetLogStream(logStream: td_o.LogStreamEmpty()));
+
   final unsecureIrcServer = await ServerSocket.bind(
     InternetAddress.anyIPv6, 
     Globals.instance.unsecurePort,
@@ -52,10 +63,13 @@ void main(List<String> arguments) async {
   );
   Globals.instance.unsecurePort = unsecureIrcServer.port;
   lInfo(function: 'main', message: 'Unsecure server started on port ${Globals.instance.unsecurePort}');
+  final securityContext = SecurityContext.defaultContext;
+  securityContext.usePrivateKey(Platform.environment['SSL_PK'] ?? './ssl/key.pem');
+  securityContext.useCertificateChain(Platform.environment['SSL_CERTIFICATE'] ?? './ssl/certificate.pem');
   final secureIrcServer = await SecureServerSocket.bind(
     InternetAddress.anyIPv6, 
     Globals.instance.securePort, 
-    SecurityContext.defaultContext,
+    securityContext,
     shared: true,
   );
   Globals.instance.securePort = secureIrcServer.port;
@@ -66,6 +80,12 @@ void main(List<String> arguments) async {
 }
 
 void onIrcConnection(IrcSocketWrapper socket) {
-  final manager = SocketManager(socket);
+  final manager = SocketManager(
+    socket,
+    onDisconnect: (mgr) {
+      socket.close();
+      managers.remove(mgr);
+    },
+  );
   managers.add(manager);
 }

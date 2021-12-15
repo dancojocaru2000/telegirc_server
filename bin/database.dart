@@ -1,4 +1,5 @@
 import 'package:sqlite3/sqlite3.dart' as sqlite;
+import 'package:uuid/uuid.dart';
 
 import 'logging.dart';
 import 'sqlite_utils.dart';
@@ -43,6 +44,14 @@ class Database {
       i._db!.execute('create table telegirc_server(version int)');
       i._db!.execute('insert into telegirc_server values (?)', [_CURRENT_DB_VERSION]);
 
+      i._db!.execute('''
+      create table users(
+        id integer primary key autoincrement,
+        dbId text not null unique,
+        baseNick text not null unique
+      )
+        ''');
+
       lInfo(function: 'Database::initialize', message: 'Created DB with version $_CURRENT_DB_VERSION');
     }
   }
@@ -55,6 +64,82 @@ class Database {
 
   static final Database _instance = Database._();
   static Database get instance => _instance;
+
+  void _ensureInit() {
+    if (_db == null) {
+      throw DatabaseException(message: 'Database is not initialized');
+    }
+  }
+
+  List<UserEntry> getUsers() {
+    _ensureInit();
+    final result = _db!.select('select * from users');
+    return result
+        .map((row) => UserEntry(
+              id: row['id'],
+              dbId: row['dbId'],
+              baseNick: row['baseNick'],
+            ))
+        .toList(growable: false);
+  }
+
+  UserEntry? getUser({int? id, String? baseNick}) {
+    _ensureInit();
+    assert(id != null || baseNick != null);
+    sqlite.ResultSet result;
+    if (id != null && baseNick != null) {
+      result = _db!.select('select * from users where id = ? and baseNick = ?', [id, baseNick]);
+    }
+    else if (id != null) {
+      result = _db!.select('select * from users where id = ?', [id]);
+    }
+    else {
+      result = _db!.select('select * from users where baseNick = ?', [baseNick]);
+    }
+    if (result.rows.isEmpty) {
+      return null;
+    }
+    final row = result.single;
+    return UserEntry(
+      id: row['id'],
+      dbId: row['dbId'], 
+      baseNick: row['baseNick'],
+    );
+  }
+
+  UserEntry addUser(UserEntry entry) {
+    _ensureInit();
+    final db = _db!;
+    db.execute('insert into users(dbId, baseNick) values (?, ?)', [entry.dbId, entry.baseNick]);
+    return getUser(baseNick: entry.baseNick)!;
+  }
+
+  String newUserDbId() {
+    final dbIds = getUsers().map((u) => u.dbId).toList(growable: false);
+    String newDbId;
+    do {
+      newDbId = Uuid().v4();
+    } while (dbIds.contains(newDbId));
+    return newDbId;
+  }
+
+  void logout(UserEntry entry) {
+    _ensureInit();
+    final db = _db!;
+    db.execute('delete from users where id = ?', [entry.id]);
+  }
+}
+
+class UserEntry {
+  final int id;
+  final String dbId;
+  final String baseNick;
+
+  UserEntry({
+    this.id = -1,
+    required this.dbId,
+    required this.baseNick,
+  });
 }
 
 class DatabaseException implements Exception {

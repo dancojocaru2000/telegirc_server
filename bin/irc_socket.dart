@@ -7,7 +7,7 @@ import 'irc.dart';
 
 extension SocketIrcMessage on Socket {
   void addIrcMessage(IrcMessage message) {
-    final socketMessage = '$message\r\n';
+    final socketMessage = '${message.ircFormat}\r\n';
     add(utf8.encode(socketMessage));
   }
 }

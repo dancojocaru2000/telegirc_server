@@ -1,0 +1,17 @@
+version: '3.9'
+services:
+  telegirc:
+    build: .
+    image: telegirc_server
+    ports:
+      - ${IRC_UNSAFE_PORT:-6667}:6667
+      - ${IRC_SAFE_PORT:-6697}:6697
+    volumes:
+      - ./ssl:/ssl:ro
+      - ./data:/data
+    environment:
+      - SSL_PK=/ssl/key.pem
+      - SSL_CERTIFICATE=/ssl/certificate.pem
+      - DB_PATH=/data
+    env_file:
+      - Envfile

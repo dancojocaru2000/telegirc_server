@@ -9,7 +9,7 @@ import 'package:ffi/ffi.dart';
 import 'package:tdlib_types/base.dart' show TdBase;
 import 'package:tdlib_types/abstract.dart' as a show OptionValue;
 import 'package:tdlib_types/obj.dart' as o show Error, UpdateOption, OptionValueEmpty, AuthorizationStateClosed;
-import 'package:tdlib_types/fn.dart' show TdFunction;
+import 'package:tdlib_types/fn.dart' show TdFunction, TestCallEmpty;
 
 class TdClient {
   static late SendPort _sendPort;
@@ -76,22 +76,23 @@ class TdClient {
           break;
       }
 
-      while (true) {
-        await Future.delayed(Duration.zero);
-        final resultRawNative = tdReceive(0);
-        if (resultRawNative.address == 0) {
-          continue;
-        }
-        final resultRaw = resultRawNative.toDartString();
-        final result = jsonDecode(resultRaw) as Map<String, dynamic>;
-        if (result.containsKey('@extra')) {
-          isolateToMain.send([int.parse(result['@extra'] as String), result]);
-        }
-        else {
-          isolateToMain.send([null, result]);
-        }
-      }
     });
+
+    while (true) {
+      await Future.delayed(Duration.zero);
+      final resultRawNative = tdReceive(0.2);
+      if (resultRawNative.address == 0) {
+        continue;
+      }
+      final resultRaw = resultRawNative.toDartString();
+      final result = jsonDecode(resultRaw) as Map<String, dynamic>;
+      if (result.containsKey('@extra')) {
+        isolateToMain.send([int.parse(result['@extra'] as String), result]);
+      }
+      else {
+        isolateToMain.send([null, result]);
+      }
+    }
   }
   static Future _initIsolate() async {
     if (_initialized) {
@@ -185,7 +186,9 @@ class TdClient {
   static Future<TdClient> newClient() async {
     await _initIsolate();
     final clientId = await _makeIsolateRequest<List, int>([_TdIsolateRequestKind.init]);
-    return TdClient._(clientId);
+    final client = TdClient._(clientId);
+    await client.send(TestCallEmpty());
+    return client;
   }
 
   static Future<Map<String, dynamic>> executeRaw(Map<String, dynamic> request) async {
@@ -204,6 +207,11 @@ class TdClient {
   Future<void> close() => sendRaw({
     '@type': 'close'
   });
+
+  @override
+  String toString() {
+    return 'TdClient($_clientId)';
+  }
 }
 
 enum _TdIsolateRequestKind {

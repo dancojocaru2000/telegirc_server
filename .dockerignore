@@ -2,8 +2,17 @@
 .dart_tool/
 .packages
 
+# Git stuff
+.git/
+.github/
+.gitignore
+
 # Conventional directory for build output.
 build/
+
+# Docker stuff
+Dockerfile
+.dockerignore
 
 # VS Code
 .vscode
