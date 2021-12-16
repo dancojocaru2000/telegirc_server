@@ -14,7 +14,7 @@ dependencies:
   tdlib_types:
     git: 
       url: https://github.com/dancojocaru2000/dart_tdlib_types
-      ref: v1.7.0
+  stack_trace: ^1.10.0
 #   path: ^1.8.0
 
 dev_dependencies:

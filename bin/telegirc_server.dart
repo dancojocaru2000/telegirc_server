@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:stack_trace/stack_trace.dart';
+
 import 'database.dart';
 import 'globals.dart';
 import 'irc_socket.dart';
@@ -28,7 +30,17 @@ String ensureEnv(String varName, {bool allowEmpty = false, bool allowWhitespace 
   }
 }
 
-void main(List<String> arguments) async {
+void main(List<String> arguments) {
+  Chain.capture(
+    () => main_traced(arguments),
+    onError: (e, chain) {
+      stderr.writeln(e);
+      stderr.writeln(chain.terse);
+    },
+  );
+}
+
+void main_traced(List<String> arguments) async {
   try {
     Globals.instance.apiId = int.parse(ensureEnv('TDLIB_API_ID'));
     Globals.instance.apiHash = ensureEnv('TDLIB_API_HASH');
@@ -76,18 +88,37 @@ void main(List<String> arguments) async {
   lInfo(function: 'main', message: 'Secure server started on port ${Globals.instance.securePort}');
 
   unsecureIrcServer.map((socket) => IrcSocketWrapper(socket)).listen(onIrcConnection);
-  secureIrcServer.map((socket) => IrcSocketWrapper(socket, secure: true,)).listen(onIrcConnection);
+  secureIrcServer
+      .map((socket) => IrcSocketWrapper(
+            socket,
+            secure: true,
+          ))
+      .listen(
+        onIrcConnection,
+        onError: (e, st) {
+          lError(function: 'main_traced/secureIrcServer->listen', message: 'Exception: $e');
+          if (st != null) {
+            stderr.writeln(Trace.from(st));
+          }
+        },
+      );
 }
 
 void onIrcConnection(IrcSocketWrapper socket) {
-  final manager = SocketManager(
-    socket,
-    onDisconnect: (mgr) {
-      lDebug(function: 'onIrcConnection/manager->onDisconnect', message: 'Disconnect');
-      mgr.dispose();
-      socket.close();
-      managers.remove(mgr);
-    },
-  );
-  managers.add(manager);
+  try {
+    final manager = SocketManager(
+      socket,
+      onDisconnect: (mgr) {
+        lDebug(function: 'onIrcConnection/manager->onDisconnect', message: 'Disconnect');
+        mgr.dispose();
+        lDebug(function: 'onIrcConnection/manager->onDisconnect', message: 'Socket closed');
+        socket.close();
+        managers.remove(mgr);
+      },
+    );
+    managers.add(manager);
+  } catch (e, st) {
+    lError(function: 'onIrcConnection', message: 'Exception: $e');
+    stderr.writeln(Trace.from(st).terse);
+  }
 }

@@ -40,6 +40,31 @@ class RegisterHandler extends ServerHandler {
     addNumeric(IrcRplTopic.withLocalHostname(nickname, signupChannel, 'Sign up to TelegIRC'));
     addNumeric(IrcRplNamReply.withLocalHostname(nickname, ChannelStatus.public, signupChannel, [nickname, signupBotNick]));
     addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, signupChannel));
+    add(IrcMessage(
+      prefix: signupBotNick,
+      command: 'PRIVMSG',
+      parameters: [signupChannel, "Hint: if your client doesn't allow you to send custom commands, you may send the commands without the slash in this channel."],
+    ));
+  }
+
+  bool checkCmdOrMsg(IrcMessage message, String command, [String msgPrefix = '']) {
+    try {
+      return message.command == command ||
+          message.command == 'PRIVMSG' &&
+              message.parameters[0] == signupChannel &&
+              message.parameters[1].split(' ')[0].toUpperCase() == msgPrefix + command;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  List<String> getParameters(IrcMessage message) {
+    if (message.command == 'PRIVMSG') {
+      return message.parameters[1].split(' ').skip(1).toList(growable: false);
+    }
+    else {
+      return message.parameters;
+    }
   }
 
   @override
@@ -53,30 +78,34 @@ class RegisterHandler extends ServerHandler {
         }
         break;
       case _RegisterState.waitingPhone:
-        if (message.command == 'PHONE') {
-          if (message.parameters.isEmpty) {
+        if (checkCmdOrMsg(message, 'PHONE')) {
+          final parameters = getParameters(message);
+          if (parameters.isEmpty) {
             throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, 'PHONE'));
           }
           state = _RegisterState.loading;
-          final phoneNo = message.parameters[0].trim();
+          final phoneNo = parameters[0].trim();
           await tdSend(td_fn.SetAuthenticationPhoneNumber(
             phoneNumber: phoneNo, 
             settings: td_o.PhoneNumberAuthenticationSettings(
+              allowMissedCall: false,
               allowFlashCall: false,
               allowSmsRetrieverApi: false,
               isCurrentPhoneNumber: false,
+              authenticationTokens: [],
             ),
           ));
           return true;
         }
         break;
       case _RegisterState.waitingCode:
-        if (message.command == 'CODE') {
-          if (message.parameters.isEmpty) {
+        if (checkCmdOrMsg(message, 'CODE')) {
+          final parameters = getParameters(message);
+          if (parameters.isEmpty) {
             throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, 'CODE'));
           }
           state = _RegisterState.loading;
-          final code = message.parameters[0].trim();
+          final code = parameters[0].trim();
           try {
             await tdSend(td_fn.CheckAuthenticationCode(
               code: code, 
@@ -98,12 +127,13 @@ class RegisterHandler extends ServerHandler {
         }
         break;
       case _RegisterState.waitingPassword:
-        if (message.command == 'PASSWORD') {
-          if (message.parameters.isEmpty) {
+        if (checkCmdOrMsg(message, 'PASSWORD')) {
+          final parameters = getParameters(message);
+          if (parameters.isEmpty) {
             throw IrcException.fromNumeric(IrcErrNeedMoreParams.withLocalHostname(nickname, 'PASSWORD'));
           }
           state = _RegisterState.loading;
-          final password = message.parameters[0].trim();
+          final password = parameters[0].trim();
           try {
             await tdSend(td_fn.CheckAuthenticationPassword(
               password: password, 
@@ -249,6 +279,62 @@ class RegisterHandler extends ServerHandler {
         },
         otherwise: (_) => Future.value(null),
       );
+    }
+  }
+
+  @override
+  Future<List<ChannelListing>> get channels async => [
+    ChannelListing(
+      channel: signupChannel,
+      clientCount: 1,
+      topic: 'Sign up to TelegIRC',
+    ),
+  ];
+
+  @override
+  Future<List<UserListing>> getUsers([String? channel]) async {
+    final channelJoined = state != _RegisterState.waitingJoin;
+    if (channel == null && !channelJoined) {
+      return [
+        UserListing(
+          channel: null,
+          username: signupBotNick,
+          nickname: signupBotNick,
+          away: false,
+          op: true,
+          chanOp: false,
+          voice: false,
+          realname: signupBotNick,
+        ),
+      ];
+    }
+    else if (channel == signupChannel) {
+      return [
+        UserListing(
+          channel: channel,
+          username: signupBotNick,
+          nickname: signupBotNick,
+          away: false,
+          op: true,
+          chanOp: false,
+          voice: false,
+          realname: signupBotNick,
+        ),
+        if (channelJoined)
+        UserListing(
+          channel: channel,
+          username: nickname,
+          nickname: nickname,
+          away: false,
+          op: false,
+          chanOp: false,
+          voice: false,
+          realname: nickname,
+        ),
+      ];
+    }
+    else {
+      return [];
     }
   }
 }

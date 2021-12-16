@@ -32,6 +32,15 @@ class IrcSocketWrapper {
       onError: (error, st) => _controller.addError(error, st),
       onDone: () => _controller.close(),
     );
+    innerSocket.done.onError((error, stackTrace) {
+      if (error == null) {
+        return;
+      }
+      if (!_controller.isClosed) {
+        _controller.addError(error, stackTrace);
+        _controller.close();
+      }
+    });
   }
 
   void _onSocketMessageReceived(Uint8List data) {
@@ -58,8 +67,9 @@ class IrcSocketWrapper {
     innerSocket.addIrcMessage(message);
   }
 
-  Future<dynamic> close() {
-    _innerSocketSubscription.cancel();
-    return _controller.close();
+  Future<dynamic> close() async {
+    await _innerSocketSubscription.cancel();
+    await _controller.close();
+    return await _controller.close();
   }
 }

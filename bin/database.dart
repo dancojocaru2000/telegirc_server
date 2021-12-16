@@ -148,6 +148,19 @@ class Database {
     final db = _db!;
     db.execute('delete from users where id = ?', [entry.id]);
   }
+
+  void updateUser(UserEntry entry) {
+    _ensureInit();
+    _db!.execute(
+      'update users set dbId = ?, baseNick = ?, password = ? where id = ?',
+      [
+        entry.dbId,
+        entry.baseNick,
+        entry.loginPassword,
+        entry.id,
+      ],
+    );
+  }
 }
 
 class UserEntry {
@@ -162,6 +175,15 @@ class UserEntry {
     required this.baseNick,
     required this.loginPassword,
   });
+
+  UserEntry copyWith({String? baseNick, String? loginPassword}) {
+    return UserEntry(
+      id: id,
+      dbId: dbId, 
+      baseNick: baseNick ?? this.baseNick, 
+      loginPassword: loginPassword ?? this.loginPassword,
+    );
+  }
 }
 
 class DatabaseException implements Exception {

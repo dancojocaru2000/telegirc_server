@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:stack_trace/stack_trace.dart';
 import 'package:tdlib_types/base.dart';
 
 import 'database.dart';
@@ -9,6 +10,7 @@ import 'globals.dart';
 import 'irc.dart';
 import 'irc_errors.dart';
 import 'irc_handlers/auth_handler.dart';
+import 'irc_handlers/chat_handler.dart';
 import 'irc_handlers/help_handler.dart';
 import 'irc_handlers/logout_handler.dart';
 import 'irc_handlers/register_handler.dart';
@@ -63,11 +65,12 @@ class SocketManager {
           loginPassword: '',
         ));
         authenticated = true;
+        addLoggedInHandlers(skipA: true);
       },
     ));
   }
 
-  void addLoggedInHandlers() {
+  void addLoggedInHandlers({skipA = false}) {
     _generalHandlers.addAll([
       LogoutHandler(
         add: add,
@@ -87,41 +90,90 @@ class SocketManager {
         addNumeric: addNumeric,
         nickname: () => nickname,
         tdSend: (fn) => tdClient!.send(fn),
+        isAuthenticated: () => authenticated,
+        setAuthenticated: (newVal) {
+          authenticated = newVal;
+          if (dbUserEntry != null) {
+            dbUserEntry = Database.instance.getUser(id: dbUserEntry!.id);
+          }
+        },
+        userId: dbUserEntry!.id,
+      ),
+      ChatHandler(
+        add: add, 
+        addNumeric: addNumeric, 
+        nickname: () => nickname, 
+        tdSend: (fn) => tdClient!.send(fn),
       ),
     ]);
+
+    if (!skipA && dbUserEntry != null && (!authenticated || dbUserEntry!.loginPassword.isEmpty)) {
+      Future.delayed(const Duration(seconds: 2), () async {
+        final nrmHdl = _generalHandlers.toList(growable: false);
+        for (final handler in nrmHdl.whereType<AuthHandler>()) {
+          handler.joinA();
+        }
+      });
+    }
   }
 
   SocketManager(this.socketWrapper, {required this.onDisconnect})
-      : _state = SocketManagerState.waitingPassOrNick {
+      : _state = SocketManagerState.waitingPassOrNickOrUser {
     _socket = socketWrapper.stream.listen(
       (message) async {
+        
         try {
-          await onMessage(message);
-        } on IrcException catch (e) {
-          add(e.message);
-        }
+          try {
+            await onMessage(message);
+          } on IrcException catch (e) {
+            add(e.message);
+          }
+        } catch (e, st) {
+          lError(
+              function: 'SocketManager::constructor/stream.listen',
+              message: 'Exception: $e');
+          stderr.writeln(Trace.from(st).terse);
+        } 
       },
       onError: onError,
-      onDone: () => onDisconnect(this),
+      onDone: () { 
+        lInfo(function: 'SocketManager::constructor/stream.listen->onDone', message: 'Socket closed');
+        onDisconnect(this); 
+      },
     );
     _normalHandlers = [
       CommandHandler.normal(
-          command: 'PASS',
-          handler: (_) =>
-              throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
-      CommandHandler.normal(
           command: 'USER',
           handler: (_) =>
-              throw IrcErrAlreadyRegistered.withLocalHostname(nickname)),
+              throw IrcException.fromNumeric(IrcErrAlreadyRegistered.withLocalHostname(nickname))),
       CommandHandler.async(command: 'MOTD', handler: (_) => sendMotd()),
       CommandHandler.async(command: 'LUSERS', handler: (_) => sendLusers()),
+      CommandHandler.async(command: 'LIST', handler: (_) async {
+        lDebug(function: 'SocketManager._normalHandlers/LIST', message: 'Listing channels');
+        addNumeric(IrcRplListStart.withLocalHostname(nickname));
+        final gnrHdl = _generalHandlers.toList(growable: false);
+        for (final handler in gnrHdl) {
+          (await handler.channels).map((chan) => chan.toNumericReply(nickname: nickname)).forEach(addNumeric);
+        }
+        addNumeric(IrcRplListEnd.withLocalHostname(nickname));
+      }),
+      CommandHandler.async(command: 'WHO', handler: (c) async {
+        lDebug(function: 'SocketManager._normalHandlers/WHO', message: 'Listing users');
+        addNumeric(IrcRplListStart.withLocalHostname(nickname));
+        final channel = c.parameters.isEmpty ? null : c.parameters[0];
+        final gnrHdl = _generalHandlers.toList(growable: false);
+        for (final handler in gnrHdl) {
+          (await handler.getUsers(channel)).map((chan) => chan.toNumericReply(nickname: nickname)).forEach(addNumeric);
+        }
+        addNumeric(IrcRplEndOfWho.withLocalHostname(nickname, channel));
+      }),
     ];
     _noMatchHandlers = [
       CommandHandler.normal(command: 'JOIN', handler: (msg) {
-        throw IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]);
+        throw IrcException.fromNumeric(IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]));
       }),
       CommandHandler.normal(command: 'PART', handler: (msg) {
-        throw IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]);
+        throw IrcException.fromNumeric(IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]));
       }),
     ];
   }
@@ -180,19 +232,34 @@ class SocketManager {
     }
 
     switch (_state) {
-      case SocketManagerState.waitingPassOrNick:
+      case SocketManagerState.waitingPassOrNickOrUser:
         if (message.command == 'PASS') {
           password = message.parameters[0];
-          _state = SocketManagerState.waitingNick;
+          _state = SocketManagerState.waitingNickOrUser;
         } else if (message.command == 'NICK') {
           nickname = message.parameters[0];
           _state = SocketManagerState.waitingUser;
+        } else if (message.command == 'USER') {
+          username = message.parameters[0];
+          realname = '~${message.parameters[3]}';
+          _state = SocketManagerState.waitingNick;
+        }
+        break;
+      case SocketManagerState.waitingNickOrUser:
+        if (message.command == 'NICK') {
+          nickname = message.parameters[0];
+          _state = SocketManagerState.waitingUser;
+        } else if (message.command == 'USER') {
+          username = message.parameters[0];
+          realname = '~${message.parameters[3]}';
+          _state = SocketManagerState.waitingNick;
         }
         break;
       case SocketManagerState.waitingNick:
         if (message.command == 'NICK') {
           nickname = message.parameters[0];
           _state = SocketManagerState.waitingUser;
+          await validateConnection();
         }
         break;
       case SocketManagerState.waitingUser:
@@ -218,8 +285,13 @@ class SocketManager {
         }
         final hdlCpy = _generalHandlers.toList(growable: false);
         for (final handler in hdlCpy) {
-          if (await handler.handleIrcMessage(message)) {
-            handled = true;
+          try {
+            if (await handler.handleIrcMessage(message)) {
+              handled = true;
+            }
+          } catch (e, st) {
+            lError(function: 'SocketManager.onMessage', message: 'Handler $handler threw on handleIrcMessage: $e');
+            stderr.writeln(Trace.from(st).terse);
           }
         }
         if (!handled) {
@@ -256,24 +328,33 @@ class SocketManager {
         isUpdateAuthorizationState: (uas) async {
           await uas.authorizationState!.match(
             isAuthorizationStateWaitTdlibParameters: (_) async {
-              await tdClient!.send(td_fn.SetTdlibParameters(
-                  parameters: td_o.TdlibParameters(
-                apiHash: Globals.instance.apiHash,
-                apiId: Globals.instance.apiId,
-                applicationVersion: Globals.applicationVersion,
-                databaseDirectory: Globals.instance.tdlibPath(dbId)!,
-                deviceModel: 'Generic Dart Server',
-                enableStorageOptimizer: true,
-                useTestDc: Globals.instance.useTestConnection,
-                filesDirectory: '',
-                ignoreFileNames: false,
-                systemLanguageCode: 'en',
-                systemVersion: '',
-                useSecretChats: false,
-                useMessageDatabase: true,
-                useChatInfoDatabase: true,
-                useFileDatabase: false,
-              )));
+              try {
+                await tdClient!.send(td_fn.SetTdlibParameters(
+                    parameters: td_o.TdlibParameters(
+                  apiHash: Globals.instance.apiHash,
+                  apiId: Globals.instance.apiId,
+                  applicationVersion: Globals.applicationVersion,
+                  databaseDirectory: Globals.instance.tdlibPath(dbId)!,
+                  deviceModel: 'Generic Dart Server',
+                  enableStorageOptimizer: true,
+                  useTestDc: Globals.instance.useTestConnection,
+                  filesDirectory: '',
+                  ignoreFileNames: false,
+                  systemLanguageCode: 'en',
+                  systemVersion: '',
+                  useSecretChats: false,
+                  useMessageDatabase: true,
+                  useChatInfoDatabase: true,
+                  useFileDatabase: false,
+                )));
+              } on td_o.Error catch(e) {
+                lError(function: 'tdClient.send', message: 'Unable to set parameters; error: $e');
+                add(IrcMessage(
+                  command: 'ERROR',
+                  parameters: ['Failed to initialize TDLib'],
+                ));
+                onDisconnect(this);
+              }
             },
             isAuthorizationStateWaitEncryptionKey: (_) async {
               await tdClient!.send(td_fn.CheckDatabaseEncryptionKey(
@@ -281,7 +362,10 @@ class SocketManager {
             },
             isAuthorizationStateReady: (_) async {
               _telegramConnectionCompleter.complete();
-              addLoggedInHandlers();
+              if (dbUserEntry != null) {
+                // Add handlers only if not registering
+                addLoggedInHandlers();
+              }
             },
             isAuthorizationStateLoggingOut: (_) {
               onLogout();
@@ -460,9 +544,10 @@ class SocketManager {
     ));
   }
 
-  void onError(Object? error, StackTrace? stackTrace) {
-    stderr.writeln(error);
-    stderr.writeln(stackTrace);
+  void onError(Object? error, StackTrace? st) {
+    lError(function: 'SocketManager.onError', message: 'Stream error: $error, trace: $st');
+    // stderr.writeln(error);
+    // stderr.writeln(st);
   }
 }
 
@@ -480,9 +565,10 @@ class CommandHandler {
 }
 
 enum SocketManagerState {
-  waitingPassOrNick,
+  waitingPassOrNickOrUser,
   waitingNick,
   waitingUser,
+  waitingNickOrUser,
   connected,
   disconnected,
 }
@@ -512,4 +598,60 @@ abstract class ServerHandler {
   Future<bool> handleIrcMessage(IrcMessage message);
 
   Future<void> handleTdMessage(TdBase message);
+
+  Future<List<ChannelListing>> get channels;
+  Future<List<UserListing>> getUsers([String? channel]);
+}
+
+class ChannelListing {
+  final String channel;
+  final int clientCount;
+  final String topic;
+
+  ChannelListing({
+    required this.channel,
+    required this.clientCount,
+    required this.topic,
+  });
+
+  IrcNumericReply toNumericReply({
+    required String nickname,
+    String? serverName,
+  }) =>
+      serverName == null
+          ? IrcRplList.withLocalHostname(nickname, channel, clientCount, topic)
+          : IrcRplList(serverName, nickname, channel, clientCount, topic);
+}
+
+class UserListing {
+  final String? channel;
+  final String username;
+  final String nickname;
+  final bool away;
+  final bool op;
+  final bool chanOp;
+  final bool voice;
+  final String realname;
+
+  UserListing({
+    required this.channel,
+    required this.username,
+    required this.nickname,
+    required this.away,
+    required this.op,
+    required this.chanOp,
+    required this.voice,
+    required this.realname,
+  });
+
+
+  IrcNumericReply toNumericReply({
+    required String nickname,
+    String? serverName,
+  }) =>
+      serverName == null
+          ? IrcRplWhoReply.withLocalHostname(
+              nickname, channel, username, this.nickname, away, op, chanOp, voice, realname)
+          : IrcRplWhoReply(serverName, nickname, channel, username, this.nickname, away, op,
+              chanOp, voice, realname);
 }

@@ -29,6 +29,13 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "1.7.0"
+  path:
+    dependency: transitive
+    description:
+      name: path
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "1.8.0"
   pedantic:
     dependency: "direct dev"
     description:
@@ -43,15 +50,22 @@ packages:
       url: "https://pub.dartlang.org"
     source: hosted
     version: "1.4.0"
+  stack_trace:
+    dependency: "direct main"
+    description:
+      name: stack_trace
+      url: "https://pub.dartlang.org"
+    source: hosted
+    version: "1.10.0"
   tdlib_types:
     dependency: "direct main"
     description:
       path: "."
-      ref: "v1.7.0"
-      resolved-ref: "254c776d84bd5f36facd5b8f6d802f55615423a2"
+      ref: HEAD
+      resolved-ref: cb025272abd328e603eb1c31bb4f09985bea234b
       url: "https://github.com/dancojocaru2000/dart_tdlib_types"
     source: git
-    version: "1.7.0"
+    version: "1.7.10"
   typed_data:
     dependency: transitive
     description:

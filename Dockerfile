@@ -1,4 +1,4 @@
-FROM ghcr.io/dancojocaru2000/tdlib:so-v1.7.0-bullseye-slim AS tdlib
+FROM ghcr.io/dancojocaru2000/tdlib:so-latest-bullseye-slim AS tdlib
 
 FROM dart:stable AS build
 RUN apt-get update && apt-get install -y git

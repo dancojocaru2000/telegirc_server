@@ -100,6 +100,95 @@ class IrcRplEndOfNames extends IrcNumericReply {
     => IrcRplEndOfNames(Platform.localHostname, client, channel);
 }
 
+class IrcRplListStart extends IrcNumericReply {
+  IrcRplListStart(String serverName, String client)
+      : super(serverName, 321, [client, 'Channel', 'Users  Name'],
+            messageName: 'RPL_LISTSTART');
+  factory IrcRplListStart.withLocalHostname(String client)
+    => IrcRplListStart(Platform.localHostname, client);
+}
+
+
+class IrcRplList extends IrcNumericReply {
+  IrcRplList(String serverName, String client, String channel, int clientCount, String topic)
+      : super(serverName, 322, [client, channel, clientCount.toString(), topic],
+            messageName: 'RPL_LIST');
+  factory IrcRplList.withLocalHostname(String client, String channel, int clientCount, String topic)
+    => IrcRplList(Platform.localHostname, client, channel, clientCount, topic);
+}
+
+class IrcRplListEnd extends IrcNumericReply {
+  IrcRplListEnd(String serverName, String client)
+      : super(serverName, 323, [client, 'End of /LIST'],
+            messageName: 'RPL_LISTEND');
+  factory IrcRplListEnd.withLocalHostname(String client)
+    => IrcRplListEnd(Platform.localHostname, client);
+}
+
+class IrcRplWhoReply extends IrcNumericReply {
+  static const int hopcount = 0;
+
+  IrcRplWhoReply(
+      String serverName,
+      String client,
+      String? channel,
+      String username,
+      String nickname,
+      bool away,
+      bool op,
+      bool chanOp,
+      bool voice,
+      String realname)
+      : super(
+          serverName,
+          352,
+          [
+            client,
+            channel ?? '*',
+            username,
+            serverName,
+            serverName,
+            nickname,
+            away ? 'G' : 'H', // Gone or Here
+            if (op) '*',
+            if (chanOp) '@' else if (voice) '+',
+            '$hopcount $realname'
+          ],
+          messageName: 'RPL_WHOREPLY',
+        );
+  factory IrcRplWhoReply.withLocalHostname(
+      String client,
+      String? channel,
+      String username,
+      String nickname,
+      bool away,
+      bool op,
+      bool chanOp,
+      bool voice,
+      String realname  
+    ) =>
+      IrcRplWhoReply(
+        Platform.localHostname,
+        client,
+        channel,
+        username,
+        nickname,
+        away,
+        op,
+        chanOp,
+        voice,
+        realname,
+      );
+}
+
+class IrcRplEndOfWho extends IrcNumericReply {
+  IrcRplEndOfWho(String serverName, String client, String? request)
+      : super(serverName, 315, [client, request ?? '*', 'End of /WHO list'],
+            messageName: 'RPL_ENDOFWHO');
+  factory IrcRplEndOfWho.withLocalHostname(String client, String? request)
+    => IrcRplEndOfWho(Platform.localHostname, client, request);
+}
+
 enum ChannelStatus {
   public,
   secret,

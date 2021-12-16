@@ -8,6 +8,7 @@ import '../telegirc_irc.dart';
 class LogoutHandler extends ServerHandler {
   static const String logoutBotNick = 'telegirc-logout-bot';
   static const String logoutChannel = '#telegirc-logout';
+  static const String logoutChannelTopic = 'Log out from Telegram and remove TelegIRC account';
 
   final void Function() onLogout;
   bool channelJoined = false;
@@ -30,12 +31,15 @@ class LogoutHandler extends ServerHandler {
   @override
   Future<bool> handleIrcMessage(IrcMessage message) async {
     if (message.command == 'JOIN' && message.parameters[0] == logoutChannel || message.command == 'LOGOUT') {
+      if (channelJoined) {
+        return true;
+      }
       add(IrcMessage(
         prefix: nickname,
         command: 'JOIN',
         parameters: [logoutChannel],
       ));
-      addNumeric(IrcRplTopic.withLocalHostname(nickname, logoutChannel, 'Log out from Telegram and remove TelegIRC account'));
+      addNumeric(IrcRplTopic.withLocalHostname(nickname, logoutChannel, logoutChannelTopic));
       addNumeric(IrcRplNamReply.withLocalHostname(nickname, ChannelStatus.public, logoutChannel, [nickname, logoutBotNick]));
       addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, logoutChannel));
       add(IrcMessage(
@@ -47,6 +51,9 @@ class LogoutHandler extends ServerHandler {
       return true;
     }
     else if (message.command == 'PART' && message.parameters[0] == logoutChannel) {
+      if (!channelJoined) {
+        return true;
+      }
       add(IrcMessage(
         prefix: nickname,
         command: 'PART',
@@ -79,4 +86,59 @@ class LogoutHandler extends ServerHandler {
 
   @override
   Future<void> handleTdMessage(TdBase message) async {}
+
+  @override
+  Future<List<ChannelListing>> get channels async => [
+    ChannelListing(
+      channel: logoutChannel,
+      clientCount: channelJoined ? 2 : 1,
+      topic: logoutChannelTopic,
+    ),
+  ];
+
+  @override
+  Future<List<UserListing>> getUsers([String? channel]) async {
+    if (channel == null && !channelJoined) {
+      return [
+        UserListing(
+          channel: null,
+          username: logoutBotNick,
+          nickname: logoutBotNick,
+          away: false,
+          op: true,
+          chanOp: false,
+          voice: false,
+          realname: logoutBotNick,
+        ),
+      ];
+    }
+    else if (channel == logoutChannel) {
+      return [
+        UserListing(
+          channel: channel,
+          username: logoutBotNick,
+          nickname: logoutBotNick,
+          away: false,
+          op: true,
+          chanOp: false,
+          voice: false,
+          realname: logoutBotNick,
+        ),
+        if (channelJoined)
+        UserListing(
+          channel: channel,
+          username: nickname,
+          nickname: nickname,
+          away: false,
+          op: false,
+          chanOp: false,
+          voice: false,
+          realname: nickname,
+        ),
+      ];
+    }
+    else {
+      return [];
+    }
+  }
 }

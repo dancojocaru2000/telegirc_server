@@ -27,7 +27,16 @@ class HelpHandler extends ServerHandler {
 
   @override
   Future<void> handleTdMessage(TdBase message) async {
-    // TODO: implement handleTdMessage
+  }
+
+  @override
+  // TODO: implement channels
+  Future<List<ChannelListing>> get channels async => [];
+
+  @override
+  Future<List<UserListing>> getUsers([String? channel]) async {
+    // TODO: implement getUsers
+    return [];
   }
 }
 
