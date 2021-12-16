@@ -167,6 +167,10 @@ class SocketManager {
         }
         addNumeric(IrcRplEndOfWho.withLocalHostname(nickname, channel));
       }),
+      CommandHandler.async(command: 'QUIT', handler: (q) async {
+        lDebug(function: 'SocketManager._normalHandlers/QUIT', message: 'Quitting');
+        onDisconnect(this);
+      }),
     ];
     _noMatchHandlers = [
       CommandHandler.normal(command: 'JOIN', handler: (msg) {
