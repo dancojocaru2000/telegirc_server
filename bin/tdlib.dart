@@ -79,10 +79,13 @@ class TdClient {
     });
 
     while (true) {
-      await Future.delayed(Duration.zero);
-      final resultRawNative = tdReceive(0.2);
+      final resultRawNative = tdReceive(0);
       if (resultRawNative.address == 0) {
+        await Future.delayed(const Duration(milliseconds: 50));
         continue;
+      }
+      else {
+        await Future.delayed(Duration.zero);
       }
       final resultRaw = resultRawNative.toDartString();
       final result = jsonDecode(resultRaw) as Map<String, dynamic>;
