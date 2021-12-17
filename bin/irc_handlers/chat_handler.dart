@@ -883,28 +883,30 @@ class ChatHandler extends ServerHandler {
           otherUsers.addAll(users);
         },
         isChatTypeSupergroup: (g) async {
-          // final group = (await tdSend(td_fn.GetSupergroupFullInfo(supergroupId: g.supergroupId))) as td_o.SupergroupFullInfo;
-          // final users = Stream.fromFutures(group.members.map((m) => m!.memberId!.match(
-          //   isMessageSenderUser: (u) {
-          //     return u.userId;
-          //   },
-          //   otherwise: (_) => null,
-          // )).whereType<int>().map((uid) async => (tdSend(td_fn.GetUser(userId: uid))) as td_o.User));
-          // await for (final user in users) {
-          //   if (user.id == myId) {
-          //     continue;
-          //   }
-          //   otherUsers.add(UserListing(
-          //     channel: channel, 
-          //     username: user.username.isNotEmpty ? user.username : user.id.toString(),
-          //     nickname: user.username.isNotEmpty ? user.username : user.id.toString(), 
-          //     away: false, 
-          //     op: false, 
-          //     chanOp: false, 
-          //     voice: false, 
-          //     realname: '${user.firstName} ${user.lastName}',
-          //   ));
-          // }
+          final group = (await tdSend(td_fn.GetSupergroupFullInfo(supergroupId: g.supergroupId))) as td_o.SupergroupFullInfo;
+          if (group.canGetMembers) {
+            final members = <td_o.ChatMember>[];
+            // while (true) {
+              final mbrs = await tdSend<td_o.ChatMembers>(td_fn.GetSupergroupMembers(
+                supergroupId: g.supergroupId,
+                filter: null,
+                offset: members.length,
+                limit: 200,
+              ));
+              // if (mbrs.members.isEmpty) {
+              //   break;
+              // }
+              members.addAll(mbrs.members.map((m) => m!));
+            // }
+
+            final users = await Future.wait(members.map((m) => m.memberId!.match(
+              isMessageSenderUser: (u) {
+                return u.userId;
+              },
+              otherwise: (_) => null,
+            )).whereType<int>().map((uid) => getUser(userId: uid, channel: channel,)));
+            otherUsers.addAll(users);
+          }
         },
         otherwise: (_) async {},
       );

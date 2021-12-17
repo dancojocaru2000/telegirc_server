@@ -151,20 +151,21 @@ class SocketManager {
   SocketManager(this.socketWrapper, {required this.onDisconnect})
       : _state = SocketManagerState.waitingPassOrNickOrUser {
     _socket = socketWrapper.stream.listen(
-      (message) async {
-        
-        try {
+      (message) {
+        Future(() async {
           try {
-            await onMessage(message);
-          } on IrcException catch (e) {
-            add(e.message);
-          }
-        } catch (e, st) {
-          lError(
-              function: 'SocketManager::constructor/stream.listen',
-              message: 'Exception: $e');
-          stderr.writeln(Trace.from(st).terse);
-        } 
+            try {
+              await onMessage(message);
+            } on IrcException catch (e) {
+              add(e.message);
+            }
+          } catch (e, st) {
+            lError(
+                function: 'SocketManager::constructor/stream.listen',
+                message: 'Exception: $e');
+            stderr.writeln(Trace.from(st).terse);
+          } 
+        });
       },
       onError: onError,
       onDone: () { 
