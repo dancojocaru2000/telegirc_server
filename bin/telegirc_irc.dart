@@ -54,6 +54,7 @@ class SocketManager {
 
   final List<String> pendingJoins = <String>[];
 
+  bool away = false;
   late final StartDelayStop awayDelay = StartDelayStop(
     startAction: () {
       tdClient?.send(td_fn.SetOption(
@@ -61,6 +62,7 @@ class SocketManager {
         value: td_o.OptionValueBoolean(value: true),
       ));
       addNumeric(IrcRplUnaway.withLocalHostname(nickname));
+      away = false;
     }, 
     stopAction: () {
       tdClient?.send(td_fn.SetOption(
@@ -68,8 +70,10 @@ class SocketManager {
         value: td_o.OptionValueBoolean(value: false),
       ));
       addNumeric(IrcRplNowAway.withLocalHostname(nickname));
+      away = true;
     }, 
     delay: const Duration(minutes: 1),
+    callStartIfNotStopped: false,
   );
 
   void addRegisterHandler() {
@@ -130,6 +134,7 @@ class SocketManager {
         tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
         pendingJoins: pendingJoins,
         isAuthenticated: () => authenticated,
+        isAway: () => away,
       ),
     ]);
 
@@ -264,11 +269,6 @@ class SocketManager {
       return;
     }
 
-    // Reset away
-    if (message.command != 'AWAY') {
-      awayDelay.startAction();
-    }
-
     switch (_state) {
       case SocketManagerState.waitingPassOrNickOrUser:
         if (message.command == 'PASS') {
@@ -308,6 +308,10 @@ class SocketManager {
         }
         break;
       case SocketManagerState.connected:
+        // Reset away
+        if (message.command != 'AWAY') {
+          awayDelay.startAction();
+        }
         var handled = false;
         for (final handler in _normalHandlers) {
           if (handler.command != message.command) {

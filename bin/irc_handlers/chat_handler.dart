@@ -25,8 +25,12 @@ class ChatHandler extends ServerHandler {
   bool dirJoined = false;
   
   final bool Function() _isAuth;
+  final bool Function() _isAway;
 
   bool get authenticated => _isAuth();
+  bool get away => _isAway();
+
+  final Map<int, List<int>> messagesToRead = {};
 
   ChatHandler({
     void Function(ServerHandler)? onUnregisterRequest,
@@ -35,8 +39,9 @@ class ChatHandler extends ServerHandler {
     required String Function() nickname,
     required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
     required bool Function() isAuthenticated,
+    required bool Function() isAway,
     List<String>? pendingJoins,
-  }) : _isAuth = isAuthenticated, super(
+  }) : _isAuth = isAuthenticated, _isAway = isAway, super(
           add: add,
           addNumeric: addNumeric,
           nickname: nickname,
@@ -113,6 +118,19 @@ class ChatHandler extends ServerHandler {
     }
     else {
       await handleChatBotCmd('#$channelName', 'recall');
+    }
+  }
+
+  Future markAsRead() async {
+    for (final entry in messagesToRead.entries) {
+      final msg = entry.value.toList();
+      entry.value.clear();
+      await tdSend(td_fn.ViewMessages(
+        chatId: entry.key,
+        messageIds: msg,
+        messageThreadId: 0,
+        forceRead: true,
+      ));
     }
   }
 
@@ -498,6 +516,15 @@ class ChatHandler extends ServerHandler {
         parameters: [channel, msg],
       ));
     }
+
+    // Mark message as read
+    if (!messagesToRead.containsKey(msg.chatId)) {
+      messagesToRead[msg.chatId] = [];
+    }
+    messagesToRead[msg.chatId]!.add(msg.id);
+    if (!away) {
+      await markAsRead();
+    }
   }
 
   void dirPrivMsgSend(String msg) {
@@ -618,6 +645,10 @@ class ChatHandler extends ServerHandler {
 
   @override
   Future<bool> handleIrcMessage(IrcMessage message) async {
+    if (!away) {
+      await markAsRead();
+    }
+
     if (message.command == 'JOIN') {
       if (message.parameters[0] == dirChannel) {
         if (!dirJoined) {
