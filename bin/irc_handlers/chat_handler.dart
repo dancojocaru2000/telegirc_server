@@ -97,6 +97,7 @@ class ChatHandler extends ServerHandler {
           .map((u) => u.nickname)
           .toList(growable: false),
     ));
+    await tdSend(td_fn.OpenChat(chatId: chatId));
     addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, '#$channelName'));
     if (!authenticated) {
       void send(String msg) {
@@ -658,6 +659,7 @@ class ChatHandler extends ServerHandler {
           command: 'PART',
           parameters: ['#$channelName'],
         ));
+        await tdSend(td_fn.CloseChat(chatId: chatId!));
       }
 
       return true;
