@@ -57,19 +57,23 @@ class SocketManager {
   bool away = false;
   late final StartDelayStop awayDelay = StartDelayStop(
     startAction: () {
-      tdClient?.send(td_fn.SetOption(
-        name: 'online',
-        value: td_o.OptionValueBoolean(value: true),
-      ));
-      addNumeric(IrcRplUnaway.withLocalHostname(nickname));
+      if (away) {
+        tdClient?.send(td_fn.SetOption(
+          name: 'online',
+          value: td_o.OptionValueBoolean(value: true),
+        ));
+        addNumeric(IrcRplUnaway.withLocalHostname(nickname));
+      }
       away = false;
     }, 
     stopAction: () {
-      tdClient?.send(td_fn.SetOption(
-        name: 'online',
-        value: td_o.OptionValueBoolean(value: false),
-      ));
-      addNumeric(IrcRplNowAway.withLocalHostname(nickname));
+      if (!away) {
+        tdClient?.send(td_fn.SetOption(
+          name: 'online',
+          value: td_o.OptionValueBoolean(value: false),
+        ));
+        addNumeric(IrcRplNowAway.withLocalHostname(nickname));
+      }
       away = true;
     }, 
     delay: const Duration(minutes: 1),
