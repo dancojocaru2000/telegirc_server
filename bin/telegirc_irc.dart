@@ -319,7 +319,8 @@ class SocketManager {
         break;
       case SocketManagerState.connected:
         // Reset away
-        if (message.command != 'AWAY') {
+        // For now, reset away only on sending messages or joining
+        if (message.command == 'PRIVMSG' || message.command == 'JOIN') {
           awayDelay.startAction();
         }
         var handled = false;
