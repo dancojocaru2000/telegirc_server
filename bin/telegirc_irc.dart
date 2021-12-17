@@ -17,6 +17,7 @@ import 'irc_handlers/register_handler.dart';
 import 'irc_replies.dart';
 import 'irc_socket.dart';
 import 'logging.dart';
+import 'start_delay_stop.dart';
 import 'tdlib.dart';
 import 'package:tdlib_types/fn.dart' as td_fn;
 import 'package:tdlib_types/fn.dart' show TdFunction;
@@ -51,13 +52,33 @@ class SocketManager {
 
   late final List<ServerHandler> _generalHandlers = [];
 
+  final List<String> pendingJoins = <String>[];
+
+  late final StartDelayStop awayDelay = StartDelayStop(
+    startAction: () {
+      tdClient?.send(td_fn.SetOption(
+        name: 'online',
+        value: td_o.OptionValueBoolean(value: true),
+      ));
+      addNumeric(IrcRplUnaway.withLocalHostname(nickname));
+    }, 
+    stopAction: () {
+      tdClient?.send(td_fn.SetOption(
+        name: 'online',
+        value: td_o.OptionValueBoolean(value: false),
+      ));
+      addNumeric(IrcRplNowAway.withLocalHostname(nickname));
+    }, 
+    delay: const Duration(minutes: 1),
+  );
+
   void addRegisterHandler() {
     _generalHandlers.add(RegisterHandler(
       onUnregisterRequest: (h) => _generalHandlers.remove(h),
       add: add,
       addNumeric: addNumeric,
       nickname: () => nickname,
-      tdSend: (fn) => tdClient!.send(fn),
+      tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
       onRegistered: () {
         dbUserEntry = Database.instance.addUser(UserEntry(
           dbId: dbId,
@@ -76,25 +97,28 @@ class SocketManager {
         add: add,
         addNumeric: addNumeric,
         nickname: () => nickname,
-        tdSend: (fn) => tdClient!.send(fn),
+        tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
         onLogout: onLogout,
       ),
       HelpHandler(
         add: add,
         addNumeric: addNumeric,
         nickname: () => nickname,
-        tdSend: (fn) => tdClient!.send(fn),
+        tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
       ),
       AuthHandler(
         add: add,
         addNumeric: addNumeric,
         nickname: () => nickname,
-        tdSend: (fn) => tdClient!.send(fn),
+        tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
         isAuthenticated: () => authenticated,
         setAuthenticated: (newVal) {
           authenticated = newVal;
           if (dbUserEntry != null) {
             dbUserEntry = Database.instance.getUser(id: dbUserEntry!.id);
+          }
+          if (newVal == false) {
+            awayDelay.stopAction();
           }
         },
         userId: dbUserEntry!.id,
@@ -103,7 +127,9 @@ class SocketManager {
         add: add, 
         addNumeric: addNumeric, 
         nickname: () => nickname, 
-        tdSend: (fn) => tdClient!.send(fn),
+        tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
+        pendingJoins: pendingJoins,
+        isAuthenticated: () => authenticated,
       ),
     ]);
 
@@ -171,10 +197,13 @@ class SocketManager {
         lDebug(function: 'SocketManager._normalHandlers/QUIT', message: 'Quitting');
         onDisconnect(this);
       }),
+      CommandHandler.normal(command: 'AWAY', handler: (_) {
+        awayDelay.stopAction();
+      }),
     ];
     _noMatchHandlers = [
       CommandHandler.normal(command: 'JOIN', handler: (msg) {
-        throw IrcException.fromNumeric(IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]));
+        pendingJoins.add(msg.parameters[0]);
       }),
       CommandHandler.normal(command: 'PART', handler: (msg) {
         throw IrcException.fromNumeric(IrcErrNoSuchChannel.withLocalHostname(nickname, msg.parameters[0]));
@@ -233,6 +262,11 @@ class SocketManager {
     if (message.command == 'PING') {
       add(IrcMessagePong.hostnameReplyToUser(nickname));
       return;
+    }
+
+    // Reset away
+    if (message.command != 'AWAY') {
+      awayDelay.startAction();
     }
 
     switch (_state) {
@@ -517,9 +551,10 @@ class SocketManager {
         }
 
         final usefulCommandsLines = [
-          'Some useful custom commands:',
-          '  /LIST-CHATS == Lists all chats and custom IDs that can be used to join the chat via IRC',
-          'Join \u0002#telegirc-help\u0002 for more.',
+          'Some useful channels:',
+          '  #a == Authentication Management',
+          '  #telegirc-dir == Directory of channels',
+          '  #telegirc-logout == Log out from TelegIRC and remove Telegram account access',
         ];
         for (final line in usefulCommandsLines) {
           yield line;
@@ -583,7 +618,7 @@ abstract class ServerHandler {
   final void Function(ServerHandler)? onUnregisterRequest;
   final void Function(IrcMessage) add;
   final void Function(IrcNumericReply) addNumeric;
-  final Future<dynamic> Function(TdFunction) tdSend;
+  final Future<T> Function<T extends TdBase>(TdFunction) tdSend;
   final String Function() _nicknameGetter;
 
   const ServerHandler({

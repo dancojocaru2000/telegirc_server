@@ -15,11 +15,11 @@ class Database {
     final i = Database.instance;
     i._db?.dispose();
     if (path == null) {
+      lDebug(function: 'Database::initialize', message: 'Opening in memory');
       i._db = sqlite.sqlite3.openInMemory();
-      lDebug(function: 'Database::initialize', message: 'Opened in memory');
     } else {
+      lDebug(function: 'Database::initialize', message: 'Opening file: $path');
       i._db = sqlite.sqlite3.open(path);
-      lDebug(function: 'Database::initialize', message: 'Opened file: $path');
     }
 
     if (i._db!.checkMaster(
@@ -48,7 +48,8 @@ class Database {
       create table users(
         id integer primary key autoincrement,
         dbId text not null unique,
-        baseNick text not null unique
+        baseNick text not null unique,
+        password text not null 
       )
         ''');
 

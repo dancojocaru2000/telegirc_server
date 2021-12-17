@@ -33,7 +33,7 @@ class AuthHandler extends ServerHandler {
     required void Function(IrcMessage) add,
     required void Function(IrcNumericReply) addNumeric,
     required String Function() nickname,
-    required Future<dynamic> Function(TdFunction) tdSend,
+    required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
     required bool Function() isAuthenticated,
     required void Function(bool) setAuthenticated,
     required this.userId,
@@ -233,10 +233,10 @@ class AuthHandler extends ServerHandler {
   Future<void> handleTdMessage(TdBase message) async {
     if (message is td_o.UpdateNewMessage) {
       final chatId = message.message!.chatId;
-      final chat = await tdSend(td_fn.GetChat(chatId: chatId)) as td_o.Chat;
+      final chat = await tdSend<td_o.Chat>(td_fn.GetChat(chatId: chatId));
       await chat.type!.match(
         isChatTypePrivate: (pc) async {
-          if (pc.userId == (await tdSend(td_fn.GetMe()) as td_o.User).id) {
+          if (pc.userId == (await tdSend<td_o.User>(td_fn.GetMe())).id) {
             await message.message!.content!.match(
               isMessageText: (msgText) async {
                 if (chpassChallengeStep != -1 && msgText.text!.text.toUpperCase() == chpassChallengeRecovery) {

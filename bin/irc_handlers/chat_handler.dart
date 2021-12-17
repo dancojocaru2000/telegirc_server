@@ -3,6 +3,7 @@ import 'package:tdlib_types/fn.dart' show TdFunction;
 import 'package:tdlib_types/fn.dart' as td_fn;
 import 'package:tdlib_types/obj.dart' as td_o;
 
+import '../extensions.dart';
 import '../irc.dart';
 import '../irc_replies.dart';
 import '../logging.dart';
@@ -10,6 +11,8 @@ import '../telegirc_irc.dart';
 
 class ChatHandler extends ServerHandler {
   static const String chatBotNick = 'telegirc-chat-bot';
+  static const dirChannel = '#telegirc-dir';
+  static const dirChannelTopic = 'TelegIRC Directory - find channels here';
 
   List<td_o.Chat> chats = [];
   List<int> joinedChats = [];
@@ -19,25 +22,44 @@ class ChatHandler extends ServerHandler {
   bool flagNoWebpagePreview = false;
   int? flagReplyTo;
 
+  bool dirJoined = false;
+  
+  final bool Function() _isAuth;
+
+  bool get authenticated => _isAuth();
+
   ChatHandler({
     void Function(ServerHandler)? onUnregisterRequest,
     required void Function(IrcMessage) add,
     required void Function(IrcNumericReply) addNumeric,
     required String Function() nickname,
-    required Future<dynamic> Function(TdFunction) tdSend,
-  }) : super(
+    required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
+    required bool Function() isAuthenticated,
+    List<String>? pendingJoins,
+  }) : _isAuth = isAuthenticated, super(
           add: add,
           addNumeric: addNumeric,
           nickname: nickname,
           tdSend: tdSend,
           onUnregisterRequest: onUnregisterRequest,
         ) {
-          refreshChats().then((_) { channels; });
+          refreshChats().then((_) { channels; }).then((_) {
+            return Future.wait(
+              pendingJoins
+                ?.map((chan) => IrcMessage(
+                    command: 'JOIN',
+                    parameters: [chan],
+                  ))
+                .map(handleIrcMessage)
+                .toList() 
+                ?? [],
+            );
+          });
         }
 
   Future refreshChats() async {
-    final chatIds = await tdSend(td_fn.GetChats(chatList: null,limit: 100)) as td_o.Chats;
-    chats = (await Future.wait(chatIds.chatIds.map((chatId) async => (await tdSend(td_fn.GetChat(chatId: chatId))) as td_o.Chat))).toList();
+    final chatIds = await tdSend<td_o.Chats>(td_fn.GetChats(chatList: null,limit: 100));
+    chats = (await Future.wait(chatIds.chatIds.map((chatId) async => (await tdSend<td_o.Chat>(td_fn.GetChat(chatId: chatId)))))).toList();
   }
 
   int? findChatId(String channelName) {
@@ -47,7 +69,7 @@ class ChatHandler extends ServerHandler {
     if (channelName.startsWith('@')) {
       channelName = channelName.substring(1);
     }
-    if (usernameCache.containsKey(channelName)) {
+    if (usernameCache.containsKey(channelName.toLowerCase())) {
       return usernameCache[channelName.toLowerCase()];
     }
     for (final chat in chats) {
@@ -76,7 +98,21 @@ class ChatHandler extends ServerHandler {
           .toList(growable: false),
     ));
     addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, '#$channelName'));
-    await handleChatBotCmd('#$channelName', 'recall');
+    if (!authenticated) {
+      void send(String msg) {
+        add(IrcMessage(
+          prefix: chatBotNick,
+          command: 'PRIVMSG',
+          parameters: ['#$channelName', msg],
+        ));
+      }
+      send('You are not authenticated!');
+      send('In order to communicate, you must authenticate.');
+      send('Join \u0002#a\u0002 to proceed.');
+    }
+    else {
+      await handleChatBotCmd('#$channelName', 'recall');
+    }
   }
 
   Future sendMessage(int chatId, String ircMsg) async {
@@ -313,13 +349,13 @@ class ChatHandler extends ServerHandler {
         final length = (params.length > 1 ? (int.tryParse(params[1])) ?? 50 : 50).clamp(1, 250);
         final messages = <td_o.Message>[];
         while (messages.length < length) {
-          final msg = (await tdSend(td_fn.GetChatHistory(
+          final msg = await tdSend<td_o.Messages>(td_fn.GetChatHistory(
             chatId: chatId,
             fromMessageId: messages.isEmpty ? 0 : messages.last.id,
             limit: length.clamp(1, 100),
             offset: 0,
             onlyLocal: false,
-          ))) as td_o.Messages;
+          ));
           if (msg.totalCount == 0 || msg.messages.isEmpty) {
             break;
           }
@@ -386,7 +422,7 @@ class ChatHandler extends ServerHandler {
     );
 
     // Show message id
-    ircMsg += '[id: ${msg.id}] ';
+    ircMsg += '\u000314[id: ${msg.id}]\u0003 ';
 
     td_o.FormattedText? fmtTxt;
     msg.content!.match(
@@ -463,68 +499,220 @@ class ChatHandler extends ServerHandler {
     }
   }
 
+  void dirPrivMsgSend(String msg) {
+    add(IrcMessage(
+      prefix: chatBotNick,
+      command: 'PRIVMSG',
+      parameters: [dirChannel, msg],
+    ));
+  }
+
+  void dirJoin() {
+    add(IrcMessage(
+      prefix: nickname,
+      command: 'JOIN',
+      parameters: [dirChannel],
+    ));
+    addNumeric(IrcRplTopic.withLocalHostname(nickname, dirChannel, dirChannelTopic));
+    addNumeric(IrcRplNamReply.withLocalHostname(
+      nickname,
+      ChannelStatus.public,
+      dirChannel,
+      [chatBotNick, nickname,],
+    ));
+    addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, dirChannel));
+
+    if (!authenticated) {
+      dirPrivMsgSend('You are not authenticated!');
+      dirPrivMsgSend('In order to access TelegIRC Directory, you must authenticate.');
+      dirPrivMsgSend('Join \u0002#a\u0002 to proceed.');
+      dirPart();
+      return;
+    }
+
+    final welcomeMessages = [
+      'Welcome to TelegIRC Directory!',
+      '',
+      'Use the following commands to view the channels you can join:',
+      '  - \u0002chats main [<query>]\u0002 == list chats in your main chat list, only those matching <query> if provided',
+      '  - \u0002chats archive [<query>]\u0002 == list chats in your archived chats, only those matching <query> if provided',
+
+    ];
+
+    welcomeMessages.forEach(dirPrivMsgSend);
+
+    dirJoined = true;
+  }
+
+  void dirPart() {
+    add(IrcMessage(
+      prefix: nickname,
+      command: 'PART',
+      parameters: [dirChannel],
+    ));
+    dirJoined = false;
+  }
+
+  Future dirPrivMsg(String message) async {
+    if (!authenticated) {
+      dirPrivMsgSend('You are not authenticated!');
+      dirPrivMsgSend('In order to access TelegIRC Directory, you must authenticate.');
+      dirPrivMsgSend('Join \u0002#a\u0002 to proceed.');
+      return;
+    }
+    message = message.trim().toLowerCase();
+    if (message.startsWith('chats ')) {
+      final kinds = {
+        'main': td_o.ChatListMain(),
+        'archive': td_o.ChatListArchive(),
+      };
+      final tmp = message.substring(6).splitLimit(' ', 2);
+      final kind = tmp[0];
+      message = tmp.length > 1 ? tmp[1] : '';
+
+      if (!kinds.containsKey(kind)) {
+        dirPrivMsgSend('Unknown chat list kind: $kind');
+        return;
+      }
+      final tdKind = kinds[kind]!;
+      dirPrivMsgSend('== Chat Listing [$kind] ==');
+
+      final chatIds = await tdSend<td_o.Chats>(td_fn.GetChats(
+        chatList: tdKind,
+        limit: 1000,
+      ));
+      final chats = await Future.wait(chatIds.chatIds.map((id) => tdSend<td_o.Chat>(td_fn.GetChat(chatId: id))));
+      for (final chat in chats) {
+        if (this.chats.where((c) => c.id == chat.id).isEmpty) {
+          this.chats.add(chat);
+        }
+
+        final channel = await getChannel(chat);
+
+        bool doesMatch() {
+          if (message.isEmpty) {
+            return true;
+          }
+          if (channel.channel.toLowerCase().contains(message.toLowerCase())) {
+            return true;
+          }
+          if (channel.topic.toLowerCase().contains(message.toLowerCase())) {
+            return true;
+          }
+
+          return false;
+        }
+
+        if (doesMatch()) {
+          dirPrivMsgSend('${channel.channel} - ${channel.topic}');
+        }
+      }
+
+      dirPrivMsgSend('== Listing End ==');
+    }
+    else {
+      dirPrivMsgSend('Unknown message: $message');
+    }
+  }
+
   @override
   Future<bool> handleIrcMessage(IrcMessage message) async {
     if (message.command == 'JOIN') {
-      final channelName = message.parameters[0].startsWith('#')
-          ? message.parameters[0].substring(1)
-          : message.parameters[0];
-      final chatId = findChatId(channelName);
-      if (chatId == null) {
-        return false;
+      if (message.parameters[0] == dirChannel) {
+        if (!dirJoined) {
+          dirJoin();
+        }
       }
+      else {
+        final channelName = message.parameters[0].startsWith('#')
+            ? message.parameters[0].substring(1)
+            : message.parameters[0];
+        final chatId = findChatId(channelName);
+        if (chatId == null) {
+          return false;
+        }
 
-      await joinChat(chatId, channelName);
+        await joinChat(chatId, channelName);
+      }
 
       return true;
     }
     else if (message.command == 'PART') {
-      final channelName = message.parameters[0].startsWith('#')
-          ? message.parameters[0].substring(1)
-          : message.parameters[0];
-      final chatId = findChatId(channelName);
-      if (!joinedChats.contains(chatId)) {
-        return false;
+      if (message.parameters[0] == dirChannel) {
+        if (dirJoined) {
+          dirPart();
+        }
       }
+      else {
+        final channelName = message.parameters[0].startsWith('#')
+            ? message.parameters[0].substring(1)
+            : message.parameters[0];
+        final chatId = findChatId(channelName);
+        if (!joinedChats.contains(chatId)) {
+          return false;
+        }
 
-      joinedChats.remove(chatId);
-      add(IrcMessage(
-        prefix: nickname,
-        command: 'PART',
-        parameters: ['#$channelName'],
-      ));
+        joinedChats.remove(chatId);
+        add(IrcMessage(
+          prefix: nickname,
+          command: 'PART',
+          parameters: ['#$channelName'],
+        ));
+      }
 
       return true;
     }
     else if (message.command == 'PRIVMSG') {
-      final channelName = message.parameters[0];
-      final chatId = findChatId(channelName);
-      if (chatId == null) {
-        return false;
+      if (message.parameters[0] == dirChannel) {
+        await dirPrivMsg(message.parameters[1].trim());
       }
+      else {
+        final channelName = message.parameters[0];
 
-      var msg = message.parameters[1];
-      while (true) {
-        if (msg.startsWith('!!')) {
-          msg = msg.substring(1);
-        }
-        else if (msg.startsWith('![')) {
-          final endIdx = msg.indexOf(']');
-          if (endIdx == -1) {
-            break;
+        if (!authenticated) {
+          void send(String message) {
+            add(IrcMessage(
+              prefix: chatBotNick,
+              command: 'PRIVMSG',
+              parameters: [channelName, message],
+            ));
           }
-          final chatBotCmd = msg.substring(2, endIdx);
-          msg = msg.substring(endIdx + 1);
 
-          await handleChatBotCmd(channelName, chatBotCmd);
-          continue;
+          send('You are not authenticated!');
+          send('In order to send messages, you must authenticate.');
+          send('Join \u0002#a\u0002 to proceed.');
+          send('After that, send ![recall] to see what messages you received while unauthenticated.');
+          return true;
         }
-        break;
-      }
 
-      msg = msg.trim();
-      if (msg.isNotEmpty) {
-        await sendMessage(chatId, msg);
+        final chatId = findChatId(channelName);
+        if (chatId == null) {
+          return false;
+        }
+
+        var msg = message.parameters[1];
+        while (true) {
+          if (msg.startsWith('!!')) {
+            msg = msg.substring(1);
+          }
+          else if (msg.startsWith('![')) {
+            final endIdx = msg.indexOf(']');
+            if (endIdx == -1) {
+              break;
+            }
+            final chatBotCmd = msg.substring(2, endIdx);
+            msg = msg.substring(endIdx + 1);
+
+            await handleChatBotCmd(channelName, chatBotCmd);
+            continue;
+          }
+          break;
+        }
+
+        msg = msg.trim();
+        if (msg.isNotEmpty) {
+          await sendMessage(chatId, msg);
+        }
       }
 
       return true;
@@ -534,6 +722,9 @@ class ChatHandler extends ServerHandler {
 
   @override
   Future<void> handleTdMessage(TdBase message) async {
+    if (!authenticated) {
+      return;
+    }
     if (message is td_o.UpdateNewMessage) {
       if (joinedChats.contains(message.message!.chatId)) {
         final channel = await getChannel(chats.where((e) => e.id == message.message!.chatId).first);
@@ -550,20 +741,32 @@ class ChatHandler extends ServerHandler {
       isChatTypePrivate: (p) async {
         clientCount = 2;
         final user = (await tdSend(td_fn.GetUser(userId: p.userId))) as td_o.User;
-        topic = 'Chat: ${chat.title}';
+        user.type?.match(
+          isUserTypeBot: (b) {
+            topic = 'Bot: ${chat.title}';
+          },
+          isUserTypeDeleted: (d) {
+            topic = 'Deleted User';
+          },
+          isUserTypeRegular: (r) {
+            topic = 'Chat: ${chat.title}';
+          },
+          otherwise: (_) {
+            topic = 'Unknown User';
+          },
+        );
         if (user.username.isNotEmpty) {
-          topic += ' (@${user.username})';
           channelName = '@${user.username}';
           usernameCache[user.username.toLowerCase()] = chat.id;
         }
       },
       isChatTypeBasicGroup: (g) async {
-        final group = (await tdSend(td_fn.GetBasicGroup(basicGroupId: g.basicGroupId))) as td_o.BasicGroup;
+        final group = await tdSend<td_o.BasicGroup>(td_fn.GetBasicGroup(basicGroupId: g.basicGroupId));
         clientCount = group.memberCount;
         topic = 'Group: ${chat.title}';
       },
       isChatTypeSupergroup: (g) async {
-        final group = (await tdSend(td_fn.GetSupergroup(supergroupId: g.supergroupId))) as td_o.Supergroup;
+        final group = await tdSend<td_o.Supergroup>(td_fn.GetSupergroup(supergroupId: g.supergroupId));
         clientCount = group.memberCount;
         topic = 'Supergroup: ${chat.title}';
         if (group.username.isNotEmpty) {
@@ -586,18 +789,32 @@ class ChatHandler extends ServerHandler {
 
   @override
   Future<List<ChannelListing>> get channels => Future.wait([
+    Future.value(ChannelListing(
+      channel: dirChannel, 
+      clientCount: dirJoined ? 2 : 1, 
+      topic: dirChannelTopic,
+    )),
     ...chats.map(getChannel),
   ]);
 
   Future<UserListing> getUser({required int userId, String? channel}) async {
-    final user = (await tdSend(td_fn.GetUser(userId: userId))) as td_o.User;
-    final me = (await tdSend(td_fn.GetMe())) as td_o.User;
+    final user = await tdSend<td_o.User>(td_fn.GetUser(userId: userId));
+    final me = await tdSend<td_o.User>(td_fn.GetMe());
     final nickname = me.id == user.id ? this.nickname : user.username.isNotEmpty ? user.username : user.id.toString();
+    final away = user.status?.match(
+      isUserStatusEmpty: (_) => false,
+      isUserStatusLastMonth: (_) => true,
+      isUserStatusLastWeek: (_) => true,
+      isUserStatusOffline: (_) => true,
+      isUserStatusOnline: (_) => false,
+      isUserStatusRecently: (_) => true,
+      otherwise: (_) => false,
+    );
     return UserListing(
       channel: channel, 
       username: user.username.isNotEmpty ? user.username : user.id.toString(),
       nickname: nickname, 
-      away: false, 
+      away: away ?? false, 
       op: false, 
       chanOp: false, 
       voice: false, 
@@ -623,7 +840,7 @@ class ChatHandler extends ServerHandler {
           otherUsers.add(await getUser(userId: p.userId, channel: channel,));
         },
         isChatTypeBasicGroup: (g) async {
-          final group = (await tdSend(td_fn.GetBasicGroupFullInfo(basicGroupId: g.basicGroupId))) as td_o.BasicGroupFullInfo;
+          final group = await tdSend<td_o.BasicGroupFullInfo>(td_fn.GetBasicGroupFullInfo(basicGroupId: g.basicGroupId));
           final users = await Future.wait(group.members.map((m) => m!.memberId!.match(
             isMessageSenderUser: (u) {
               return u.userId;

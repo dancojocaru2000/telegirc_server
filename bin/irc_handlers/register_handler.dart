@@ -19,7 +19,7 @@ class RegisterHandler extends ServerHandler {
     required void Function(IrcMessage) add,
     required void Function(IrcNumericReply) addNumeric,
     required String Function() nickname,
-    required Future<dynamic> Function(TdFunction) tdSend,
+    required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
     required this.onRegistered,
   }) : super(
           onUnregisterRequest: onUnregisterRequest,
@@ -243,7 +243,7 @@ class RegisterHandler extends ServerHandler {
           state = _RegisterState.waitingPhone;
         },
         isAuthorizationStateReady: (_) async {
-          final user = await tdSend(td_fn.GetMe()) as td_o.User;
+          final user = await tdSend<td_o.User>(td_fn.GetMe());
           final prompt = <String>[
             'Registration successful!',
             'Welcome to TelegIRC, ${user.firstName} ${user.lastName}!',

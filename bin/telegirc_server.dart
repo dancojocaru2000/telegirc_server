@@ -78,6 +78,9 @@ void main_traced(List<String> arguments) async {
   final securityContext = SecurityContext.defaultContext;
   securityContext.usePrivateKey(Platform.environment['SSL_PK'] ?? './ssl/key.pem');
   securityContext.useCertificateChain(Platform.environment['SSL_CERTIFICATE'] ?? './ssl/certificate.pem');
+  if (Platform.environment['SSL_CHAIN']?.isNotEmpty == true) {
+    securityContext.useCertificateChain(Platform.environment['SSL_CHAIN']!);
+  }
   final secureIrcServer = await SecureServerSocket.bind(
     InternetAddress.anyIPv6, 
     Globals.instance.securePort, 

@@ -10,7 +10,7 @@ class HelpHandler extends ServerHandler {
     required void Function(IrcMessage) add,
     required void Function(IrcNumericReply) addNumeric,
     required String Function() nickname,
-    required Future<dynamic> Function(TdFunction) tdSend,
+    required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
   }) : super(
           add: add,
           addNumeric: addNumeric,

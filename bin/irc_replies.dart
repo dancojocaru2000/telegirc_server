@@ -189,6 +189,22 @@ class IrcRplEndOfWho extends IrcNumericReply {
     => IrcRplEndOfWho(Platform.localHostname, client, request);
 }
 
+class IrcRplNowAway extends IrcNumericReply {
+  IrcRplNowAway(String serverName, String client)
+      : super(serverName, 306, [client, 'You are now away'],
+            messageName: 'RPL_BOWAWAY');
+  factory IrcRplNowAway.withLocalHostname(String client)
+    => IrcRplNowAway(Platform.localHostname, client);
+}
+
+class IrcRplUnaway extends IrcNumericReply {
+  IrcRplUnaway(String serverName, String client)
+      : super(serverName, 305, [client, 'You are no longer away'],
+            messageName: 'RPL_UNAWAY');
+  factory IrcRplUnaway.withLocalHostname(String client)
+    => IrcRplUnaway(Platform.localHostname, client);
+}
+
 enum ChannelStatus {
   public,
   secret,
