@@ -203,8 +203,13 @@ class SocketManager {
         lDebug(function: 'SocketManager._normalHandlers/QUIT', message: 'Quitting');
         onDisconnect(this);
       }),
-      CommandHandler.normal(command: 'AWAY', handler: (_) {
-        awayDelay.stopAction();
+      CommandHandler.normal(command: 'AWAY', handler: (a) {
+        if (a.parameters.isEmpty) {
+          awayDelay.startAction();
+        }
+        else {
+          awayDelay.stopAction();
+        }
       }),
     ];
     _noMatchHandlers = [

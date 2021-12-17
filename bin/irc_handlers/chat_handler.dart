@@ -764,6 +764,16 @@ class ChatHandler extends ServerHandler {
         await tdMsgToIrc(channel.channel, message.message!);
       }
     }
+    else if (message is td_o.UpdateUserStatus) {
+      final user = await getUser(userId: message.userId);
+      add(IrcMessage(
+        prefix: user.nickname,
+        command: 'AWAY',
+        parameters: [
+          if (user.away) 'User is offline on Telegram',
+        ],
+      ));
+    }
   }
 
   Future<ChannelListing> getChannel(td_o.Chat chat) async {
@@ -934,7 +944,7 @@ class ChatHandler extends ServerHandler {
             realname: nickname,
           ),
         ],
-        ...otherUsers,
+        ...otherUsers.where((u) => u.nickname != nickname),
       ];
     }
   }
