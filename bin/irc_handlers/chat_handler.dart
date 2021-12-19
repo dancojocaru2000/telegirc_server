@@ -949,5 +949,3 @@ class ChatHandler extends ServerHandler {
     }
   }
 }
-
-

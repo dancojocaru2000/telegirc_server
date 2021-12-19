@@ -40,11 +40,11 @@ class RegisterHandler extends ServerHandler {
     addNumeric(IrcRplTopic.withLocalHostname(nickname, signupChannel, 'Sign up to TelegIRC'));
     addNumeric(IrcRplNamReply.withLocalHostname(nickname, ChannelStatus.public, signupChannel, [nickname, signupBotNick]));
     addNumeric(IrcRplEndOfNames.withLocalHostname(nickname, signupChannel));
-    add(IrcMessage(
-      prefix: signupBotNick,
-      command: 'PRIVMSG',
-      parameters: [signupChannel, "Hint: if your client doesn't allow you to send custom commands, you may send the commands without the slash in this channel."],
-    ));
+    // add(IrcMessage(
+    //   prefix: signupBotNick,
+    //   command: 'PRIVMSG',
+    //   parameters: [signupChannel, "Hint: if your client doesn't allow you to send custom commands, you may send the commands without the slash in this channel."],
+    // ));
   }
 
   bool checkCmdOrMsg(IrcMessage message, String command, [String msgPrefix = '']) {
@@ -169,7 +169,7 @@ class RegisterHandler extends ServerHandler {
             await doJoin();
           }
           final prompt = [
-            'Please send your phone number using the command \u0002/PHONE +xxxxxxxx\u0002.',
+            'Please send your phone number using the command \u0002PHONE +xxxxxxxx\u0002.',
             'Ensure your phone number is in international format.',
             'For example, an USA phone number is +1978765123, +1 representing the country code.',
           ];
@@ -201,7 +201,7 @@ class RegisterHandler extends ServerHandler {
             otherwise: (_) {},
           );
           prompt.addAll([
-            'Please send the code using the command \u0002/CODE ' + '0' * codeLength + '\u0002.',
+            'Please send the code using the command \u0002CODE ' + '0' * codeLength + '\u0002.',
           ]);
           for (final msg in prompt) {
             add(IrcMessage(
@@ -216,7 +216,7 @@ class RegisterHandler extends ServerHandler {
           final prompt = <String>[
             'Your account is protected with a password.',
             ''
-            'Please send the password using the command \u0002/PASSWORD ${aswp.passwordHint}\u0002.',
+            'Please send the password using the command \u0002PASSWORD ${aswp.passwordHint}\u0002.',
           ];
           for (final msg in prompt) {
             add(IrcMessage(
@@ -251,8 +251,9 @@ class RegisterHandler extends ServerHandler {
             '\u0002Username\u0002: ${user.username}',
             '\u0002Phone number\u0002: ${user.phoneNumber}',
             '\u0002User ID\u0002: ${user.id}',
-            '',
-            'Join \u0002#telegirc-help\u0002 to learn how to use TelegIRC.',
+            // TODO: Implement #telegirc-help
+            // '',
+            // 'Join \u0002#telegirc-help\u0002 to learn how to use TelegIRC.',
             '',
             '\u0002Important!\u0002',
             'Please take some time to secure your account by setting a password!',

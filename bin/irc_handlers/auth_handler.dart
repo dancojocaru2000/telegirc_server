@@ -72,8 +72,8 @@ class AuthHandler extends ServerHandler {
     if (!suppressMessages) {
       if (!authenticated) {
         pm('You are not authenticated. The following commands are available:');
-        pm('  - /PASS password == supply password in order to authenticate');
-        pm('  - /CHPASS == change or reset the password');
+        pm('  - \u0002PASS password\u0002 == supply password in order to authenticate');
+        pm('  - \u0002CHPASS\u0002 == change or reset the password');
       }
       else if (authenticated) {
         if (Database.instance.getUser(id: userId)!.loginPassword.isEmpty) {
@@ -82,12 +82,12 @@ class AuthHandler extends ServerHandler {
           pm('The choice is yours, however. Feel free to leave this channel if you wish to continue without a password.');
           pm('');
           pm('The following commands are available:');
-          pm('  - /CHPASS == change or reset the password');
+          pm('  - \u0002CHPASS\u0002 == change or reset the password');
         }
         else {
           pm('You are authenticated. The following commands are available:');
-          pm('  - /CHPASS == change or reset the password');
-          pm('  - /LOCK == lock the current session, requiring the password to once again authenticate');
+          pm('  - \u0002CHPASS\u0002 == change or reset the password');
+          pm('  - \u0002LOCK\u0002 == lock the current session, requiring the password to once again authenticate');
         }
       }
     }
@@ -142,13 +142,13 @@ class AuthHandler extends ServerHandler {
       if (Database.instance.getUser(id: userId)!.loginPassword.isEmpty) {
         pm('You currently have no password set.');
         pm('Use the following command:');
-        pm('  - /NEWPASS password == set a new password');
+        pm('  - \u0002NEWPASS password\u0002 == set a new password');
         chpassChallengeStep++;
       }
       else if (authenticated) {
         pm('In order to change your password, you need to authenticate again.');
         pm('Use the following command:');
-        pm('  - /PASS password == supply password in order to authenticate');
+        pm('  - \u0002PASS password\u0002 == supply password in order to authenticate');
         pm("Alternatively, if you don't know your password, use another device to send the following message in your Saved Messages:");
         pm(chpassChallengeRecovery!);
 
@@ -157,7 +157,7 @@ class AuthHandler extends ServerHandler {
       else {
         pm('In order to change your password, you need to authenticate.');
         pm('Use the following command:');
-        pm('  - /PASS password == supply password in order to authenticate');
+        pm('  - \u0002PASS password\u0002 == supply password in order to authenticate');
         pm("Alternatively, if you don't know your password, use another device to send the following message in your Saved Messages:");
         pm(chpassChallengeRecovery!);
       }
@@ -176,8 +176,8 @@ class AuthHandler extends ServerHandler {
       authenticated = false;
       pm('This session is now locked and you are no longer authenticated.');
       pm('The following commands are available:');
-      pm('  - /PASS password == supply password in order to authenticate');
-      pm('  - /CHPASS == change or reset the password');
+      pm('  - \u0002PASS password\u0002 == supply password in order to authenticate');
+      pm('  - \u0002CHPASS\u0002 == change or reset the password');
       return true;
     }
     else if (checkCmdOrMsg(message, 'PASS')) {
@@ -192,11 +192,11 @@ class AuthHandler extends ServerHandler {
         authenticated = true;
         pm('You have authenticated! Welcome.');
         pm('The following commands are available:');
-        pm('  - /CHPASS == change or reset the password');
-        pm('  - /LOCK == lock the current session, requiring the password to once again authenticate');
+        pm('  - \u0002CHPASS\u0002 == change or reset the password');
+        pm('  - \u0002LOCK\u0002 == lock the current session, requiring the password to once again authenticate');
         if (chpassChallengeStep != -1) {
           chpassChallengeStep++;
-          pm('  - /NEWPASS password == set a new password');
+          pm('  - \u0002NEWPASS password\u0002 == set a new password');
         }
       }
       else {
@@ -221,8 +221,8 @@ class AuthHandler extends ServerHandler {
       authenticated = true;
       pm('You have changed your password and are now authenticated.');
       pm('The following commands are now available.');
-      pm('  - /CHPASS == change or reset the password');
-      pm('  - /LOCK == lock the current session, requiring the password to once again authenticate');
+      pm('  - \u0002CHPASS\u0002 == change or reset the password');
+      pm('  - \u0002LOCK\u0002 == lock the current session, requiring the password to once again authenticate');
 
       return true;
     }
@@ -244,7 +244,7 @@ class AuthHandler extends ServerHandler {
                   chpassChallengeRecovery = null;
                   pm('You have confirmed password recovery via Telegram Saved Messages.');
                   pm('Use the following command:');
-                  pm('  - /NEWPASS password == set a new password');
+                  pm('  - \u0002NEWPASS password\u0002 == set a new password');
                   await tdSend(td_fn.DeleteMessages(
                     chatId: chatId,
                     messageIds: [message.message!.id],
