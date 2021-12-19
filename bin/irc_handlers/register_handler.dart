@@ -1,3 +1,4 @@
+import 'package:qr/qr.dart';
 import 'package:tdlib_types/base.dart';
 import 'package:tdlib_types/fn.dart' show TdFunction;
 import 'package:tdlib_types/fn.dart' as td_fn;
@@ -97,6 +98,11 @@ class RegisterHandler extends ServerHandler {
           ));
           return true;
         }
+        else if (checkCmdOrMsg(message, 'QR')) {
+          state = _RegisterState.loading;
+          await tdSend(td_fn.RequestQrCodeAuthentication(otherUserIds: []));
+          return true;
+        }
         break;
       case _RegisterState.waitingCode:
         if (checkCmdOrMsg(message, 'CODE')) {
@@ -156,6 +162,8 @@ class RegisterHandler extends ServerHandler {
         break;
       case _RegisterState.loading:
         break;
+      case _RegisterState.waitingQr:
+        break;
     }
     return false;
   }
@@ -172,6 +180,8 @@ class RegisterHandler extends ServerHandler {
             'Please send your phone number using the command \u0002PHONE +xxxxxxxx\u0002.',
             'Ensure your phone number is in international format.',
             'For example, an USA phone number is +1978765123, +1 representing the country code.',
+            '',
+            'Alternatively, use the command \u0002QR\u0002 to connect by scanning a QR code on another device.',
           ];
           for (final msg in prompt) {
             add(IrcMessage(
@@ -226,6 +236,40 @@ class RegisterHandler extends ServerHandler {
             ));
           }
           state = _RegisterState.waitingPassword;
+        },
+        isAuthorizationStateWaitOtherDeviceConfirmation: (odc) async {
+          final prompt = <String>[
+            'Please scan the following QR code using a Telegram app on another device.',
+            'If a new QR code is generated before you scan a previous one, it will be sent to you.',
+            'Please scan the latest one.',
+          ];
+
+          for (final msg in prompt) {
+            add(IrcMessage(
+              prefix: signupBotNick,
+              command: 'PRIVMSG',
+              parameters: [signupChannel, msg],
+            ));
+          }
+
+          final qrCode = QrCode.fromData(data: odc.link, errorCorrectLevel: QrErrorCorrectLevel.M);
+          final qrImage = QrImage(qrCode);
+          final qrMessages = List.generate(
+            qrCode.moduleCount, 
+            (row) => List.generate(
+              qrCode.moduleCount, 
+              (col) => qrImage.isDark(row, col) ? '\u000301██' : '\u000300██',
+            ).join(''),
+          );
+          for (final line in qrMessages) {
+            add(IrcMessage(
+              prefix: signupBotNick,
+              command: 'PRIVMSG',
+              parameters: [signupChannel, line],
+            ));
+          }
+
+          state = _RegisterState.waitingQr;
         },
         isAuthorizationStateWaitRegistration: (aswr) async {
           final prompt = <String>[
@@ -346,4 +390,5 @@ enum _RegisterState {
   waitingPhone,
   waitingCode,
   waitingPassword,
+  waitingQr,
 }
