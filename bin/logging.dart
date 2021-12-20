@@ -1,5 +1,6 @@
 import 'dart:io';
 
+void lCritical({required String function, required String message}) => log(function: function, message: message, type: LogType.critical);
 void lError({required String function, required String message}) => log(function: function, message: message, type: LogType.error);
 void lWarn({required String function, required String message}) => log(function: function, message: message, type: LogType.warn);
 void lInfo({required String function, required String message}) => log(function: function, message: message, type: LogType.info);
@@ -53,6 +54,7 @@ LogType get _maxLogType {
 }
 
 enum LogType {
+  critical,
   error,
   warn,
   info,
@@ -69,6 +71,8 @@ extension AllowedTypes on LogType {
 extension ColorOfType on LogType {
   int get ansiColor {
     switch (this) {
+      case LogType.critical:
+        return 91;
       case LogType.error:
         return 91;
       case LogType.warn:
@@ -84,6 +88,8 @@ extension ColorOfType on LogType {
 extension BadgeString on LogType {
   String get badge {
     switch (this) {
+      case LogType.critical:
+        return '[C]';
       case LogType.error:
         return '[E]';
       case LogType.warn:
