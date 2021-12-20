@@ -69,7 +69,7 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: cb025272abd328e603eb1c31bb4f09985bea234b
+      resolved-ref: "6d7773a3302e53ca31fac65e4929fe5218446cab"
       url: "https://github.com/dancojocaru2000/dart_tdlib_types"
     source: git
     version: "1.7.10"
