@@ -896,18 +896,18 @@ class ChatHandler extends ServerHandler {
           final group = (await tdSend(td_fn.GetSupergroupFullInfo(supergroupId: g.supergroupId))) as td_o.SupergroupFullInfo;
           if (group.canGetMembers) {
             final members = <td_o.ChatMember>[];
-            // while (true) {
+            while (true) {
               final mbrs = await tdSend<td_o.ChatMembers>(td_fn.GetSupergroupMembers(
                 supergroupId: g.supergroupId,
                 filter: null,
                 offset: members.length,
                 limit: 200,
               ));
-              // if (mbrs.members.isEmpty) {
-              //   break;
-              // }
+              if (mbrs.members.isEmpty) {
+                break;
+              }
               members.addAll(mbrs.members.map((m) => m!));
-            // }
+            }
 
             final users = await Future.wait(members.map((m) => m.memberId!.match(
               isMessageSenderUser: (u) {
