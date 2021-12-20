@@ -702,6 +702,11 @@ class ChatHandler extends ServerHandler {
       else {
         final channelName = message.parameters[0];
 
+        final chatId = findChatId(channelName);
+        if (chatId == null) {
+          return false;
+        }
+
         if (!authenticated) {
           void send(String message) {
             add(IrcMessage(
@@ -716,11 +721,6 @@ class ChatHandler extends ServerHandler {
           send('Join \u0002#a\u0002 to proceed.');
           send('After that, send ![recall] to see what messages you received while unauthenticated.');
           return true;
-        }
-
-        final chatId = findChatId(channelName);
-        if (chatId == null) {
-          return false;
         }
 
         var msg = message.parameters[1];
