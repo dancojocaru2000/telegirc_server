@@ -576,12 +576,27 @@ class ChatHandler extends ServerHandler {
       ircMsg += s;
     }
 
-    for (final msg in ircMsg.split(RegExp(r'\r?\n'))) {
+    var startedInPrevious = '';
+    final formattingChars = ['\u0002', '\u001D', '\u001F', '\u001E', '\u0011'];
+    for (var msg in ircMsg.split(RegExp(r'\r?\n'))) {
+      msg = '$startedInPrevious$msg';
+
+      final foundFormattingChars = msg.codeUnits
+        .map((cu) => String.fromCharCode(cu))
+        .where(formattingChars.contains)
+        .toList(growable: false);
+      for (final fmtChar in formattingChars) {
+        if (foundFormattingChars.where((e) => e == fmtChar).length % 2 != 0) {
+          startedInPrevious += fmtChar;
+        }
+      }
+
       add(IrcMessage(
         prefix: sender,
         command: 'PRIVMSG',
         parameters: [channel, msg],
       ));
+
     }
 
     // Mark message as read
