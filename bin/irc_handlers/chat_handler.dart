@@ -488,6 +488,54 @@ class ChatHandler extends ServerHandler {
         ircMsg += '[Video] ';
         fmtTxt = v.caption;
       },
+      isMessageContact: (contact) {
+        ircMsg += '[Contact] ';
+        final fields = [];
+        if (contact.contact!.userId > 0) {
+          fields.add('Id: ${contact.contact!.userId}');
+        }
+        if (contact.contact!.firstName.isNotEmpty) {
+          fields.add('Name: ${contact.contact!.firstName} ${contact.contact!.lastName}');
+        }
+        if (contact.contact!.phoneNumber.isNotEmpty) {
+          fields.add('Phone number: ${contact.contact!.phoneNumber}');
+        }
+        ircMsg += fields.join(', ');
+      },
+      isMessageGame: (game) {
+        ircMsg += '[Game] ${game.game!.title}';
+      },
+      isMessageGameScore: (gs) {
+        ircMsg += '[Game Score] New Score: ${gs.score}';
+      },
+      isMessageCall: (call) {
+        if (call.isVideo) {
+          ircMsg += '[Video Call] ';
+        }
+        else {
+          ircMsg += '[Call] ';
+        }
+        final duration = Duration(seconds: call.duration);
+        ircMsg += '$duration ';
+        call.discardReason?.match(
+          isCallDiscardReasonDeclined: (_) {
+            ircMsg += 'Declined';
+          },
+          isCallDiscardReasonDisconnected: (_) {
+            ircMsg += 'Disconnected';
+          },
+          isCallDiscardReasonMissed: (_) {
+            ircMsg += 'Missed';
+          },
+          otherwise: (_) {},
+        );
+      },
+      isMessageChatChangeTitle: (titleChange) {
+        ircMsg += '[Chat Title Change] ${titleChange.title}';
+      },
+      isMessageUnsupported: (_) {
+        ircMsg += '[Unsupported by TelegIRC]';
+      },
       otherwise: (_) {
         ircMsg += '[Unable to process]';
       }
