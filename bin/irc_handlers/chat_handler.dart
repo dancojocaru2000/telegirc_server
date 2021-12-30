@@ -543,17 +543,36 @@ class ChatHandler extends ServerHandler {
 
     if (fmtTxt != null) {
       var s = fmtTxt!.text;
+      var insertedAt = [];
+
+      void insertAt(String toInsert, int pos) {
+        pos += insertedAt.where((element) => element <= pos).length;
+        insertedAt.add(pos);
+        s = s.substring(0, pos) + toInsert + s.substring(pos);
+      }
+
       for (final entity in fmtTxt!.entities) {
         if (entity == null) {
           continue;
         }
-        entity.type!.match(
-          isTextEntityTypeBold: (b) {
-            
-          },
-          otherwise: (_) {},
+        var entityChar = entity.type!.match(
+          isTextEntityTypeBold: (_) => '\u0002',
+          isTextEntityTypeItalic: (_) => '\u001D',
+          isTextEntityTypeUnderline: (_) => '\u001F',
+          isTextEntityTypeStrikethrough: (_) => '\u001E',
+          isTextEntityTypeCode: (_) => '\u0011',
+          isTextEntityTypePre: (_) => '\u0011',
+          isTextEntityTypePreCode: (_) => '\u0011',
+          otherwise: (_) => '',
         );
+        if (entityChar.isEmpty) {
+          continue;
+        }
+
+        insertAt(entityChar, entity.offset);
+        insertAt(entityChar, entity.offset + entity.length);
       }
+
       ircMsg += s;
     }
 
