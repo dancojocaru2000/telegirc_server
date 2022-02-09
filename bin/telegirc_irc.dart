@@ -14,9 +14,11 @@ import 'irc_handlers/chat_handler.dart';
 import 'irc_handlers/help_handler.dart';
 import 'irc_handlers/logout_handler.dart';
 import 'irc_handlers/register_handler.dart';
+import 'irc_handlers/settings_handler.dart';
 import 'irc_replies.dart';
 import 'irc_socket.dart';
 import 'logging.dart';
+import 'settings_wrapper.dart';
 import 'start_delay_stop.dart';
 import 'tdlib.dart';
 import 'package:tdlib_types/fn.dart' as td_fn;
@@ -139,6 +141,27 @@ class SocketManager {
         pendingJoins: pendingJoins,
         isAuthenticated: () => authenticated,
         isAway: () => away,
+        settings: SettingsWrapper(
+          user: () => dbUserEntry!,
+          onDbChange: (entry) {
+            Database.instance.updateUser(entry);
+            dbUserEntry = Database.instance.getUser(id: entry.id);
+          },
+        ),
+      ),
+      SettingsHandler(
+        settings: SettingsWrapper(
+          user: () => dbUserEntry!,
+          onDbChange: (entry) {
+            Database.instance.updateUser(entry);
+            dbUserEntry = Database.instance.getUser(id: entry.id);
+          },
+        ),
+        add: add,
+        addNumeric: addNumeric,
+        tdSend: <T extends TdBase>(fn) async => (await tdClient!.send(fn)) as T,
+        nickname: () => nickname,
+        isAuthenticated: () => authenticated,
       ),
     ]);
 
@@ -569,6 +592,7 @@ class SocketManager {
           'Some useful channels:',
           '  #a == Authentication Management',
           '  #telegirc-dir == Directory of channels',
+          '  #telegirc-settings == Change TelegIRC settings',
           '  #telegirc-logout == Log out from TelegIRC and remove Telegram account access',
         ];
         for (final line in usefulCommandsLines) {

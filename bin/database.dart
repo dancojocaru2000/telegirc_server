@@ -1,10 +1,12 @@
+import 'dart:convert';
+
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:uuid/uuid.dart';
 
 import 'logging.dart';
 import 'sqlite_utils.dart';
 
-const _CURRENT_DB_VERSION = 2;
+const _CURRENT_DB_VERSION = 3;
 
 class Database {
   sqlite.Database? _db;
@@ -49,7 +51,8 @@ class Database {
         id integer primary key autoincrement,
         dbId text not null unique,
         baseNick text not null unique,
-        password text not null 
+        password text not null,
+        settings text
       )
         ''');
 
@@ -71,6 +74,20 @@ class Database {
       db.execute('alter table new_users rename to users');
 
       db.execute('update telegirc_server set version = 2');
+    }
+    else if (currentVersion == 2) {
+      final db = Database._instance._db!;
+      lDebug(function: 'Database::migrate', message: 'Creating new_users');
+      db.execute('create table new_users(id integer primary key autoincrement, dbId text not null unique, baseNick text not null unique, password text not null, settings text)');
+      for (final row in db.select('select * from users')) {
+        db.execute('insert into new_users(dbId, baseNick, password, settings) values (?, ?, ?, ?)', [row['dbId'], row['baseNick'], row['password'], null]);
+      }
+      lDebug(function: 'Database::migrate', message: 'Dropping users');
+      db.execute('drop table users');
+      lDebug(function: 'Database::migrate', message: 'Renaming new_users to users');
+      db.execute('alter table new_users rename to users');
+
+      db.execute('update telegirc_server set version = 3');
     }
   }
 
@@ -118,6 +135,7 @@ class Database {
       dbId: row['dbId'], 
       baseNick: row['baseNick'],
       loginPassword: row['password'],
+      settings: row['settings'] == null ? null : jsonDecode(row['settings']),
     );
   }
 
@@ -125,11 +143,12 @@ class Database {
     _ensureInit();
     final db = _db!;
     db.execute(
-      'insert into users(dbId, baseNick, password) values (?, ?, ?)',
+      'insert into users(dbId, baseNick, password, settings) values (?, ?, ?, ?)',
       [
         entry.dbId,
         entry.baseNick,
         entry.loginPassword,
+        jsonEncode(entry.settings),
       ],
     );
     return getUser(baseNick: entry.baseNick)!;
@@ -153,11 +172,12 @@ class Database {
   void updateUser(UserEntry entry) {
     _ensureInit();
     _db!.execute(
-      'update users set dbId = ?, baseNick = ?, password = ? where id = ?',
+      'update users set dbId = ?, baseNick = ?, password = ?, settings = ? where id = ?',
       [
         entry.dbId,
         entry.baseNick,
         entry.loginPassword,
+        jsonEncode(entry.settings),
         entry.id,
       ],
     );
@@ -169,13 +189,17 @@ class UserEntry {
   final String dbId;
   final String baseNick;
   final String loginPassword;
+  late final Map<String, dynamic> settings;
 
   UserEntry({
     this.id = -1,
     required this.dbId,
     required this.baseNick,
     required this.loginPassword,
-  });
+    Map<String, dynamic>? settings,
+  }) {
+    this.settings = settings ?? {};
+  }
 
   UserEntry copyWith({String? baseNick, String? loginPassword}) {
     return UserEntry(
@@ -183,6 +207,7 @@ class UserEntry {
       dbId: dbId, 
       baseNick: baseNick ?? this.baseNick, 
       loginPassword: loginPassword ?? this.loginPassword,
+      settings: Map.of(settings),
     );
   }
 }

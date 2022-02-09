@@ -7,12 +7,15 @@ import '../extensions.dart';
 import '../irc.dart';
 import '../irc_replies.dart';
 import '../logging.dart';
+import '../settings_wrapper.dart';
 import '../telegirc_irc.dart';
 
 class ChatHandler extends ServerHandler {
   static const String chatBotNick = 'telegirc-chat-bot';
   static const dirChannel = '#telegirc-dir';
   static const dirChannelTopic = 'TelegIRC Directory - find channels here';
+
+  final SettingsWrapper settings;
 
   List<td_o.Chat> chats = [];
   List<int> joinedChats = [];
@@ -40,6 +43,7 @@ class ChatHandler extends ServerHandler {
     required Future<T> Function<T extends TdBase>(TdFunction) tdSend,
     required bool Function() isAuthenticated,
     required bool Function() isAway,
+    required this.settings,
     List<String>? pendingJoins,
   }) : _isAuth = isAuthenticated, _isAway = isAway, super(
           add: add,
@@ -115,9 +119,11 @@ class ChatHandler extends ServerHandler {
       send('You are not authenticated!');
       send('In order to communicate, you must authenticate.');
       send('Join \u0002#a\u0002 to proceed.');
+      return;
     }
-    else {
-      await handleChatBotCmd('#$channelName', 'recall');
+
+    if (settings.recallOnJoin) {
+      await handleChatBotCmd('#$channelName', 'recall ${settings.recallLength}');
     }
   }
 
@@ -365,7 +371,8 @@ class ChatHandler extends ServerHandler {
     final params = cmd.split(' ');
     switch (params[0].toLowerCase()) {
       case 'recall':
-        final length = (params.length > 1 ? (int.tryParse(params[1])) ?? 50 : 50).clamp(1, 250);
+        final defaultLength = settings.getSetting<int>(Setting.recallLength);
+        final length = (params.length > 1 ? (int.tryParse(params[1])) ?? defaultLength : defaultLength).clamp(1, 1000);
         final messages = <td_o.Message>[];
         while (messages.length < length) {
           final msg = await tdSend<td_o.Messages>(td_fn.GetChatHistory(
