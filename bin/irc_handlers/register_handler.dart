@@ -48,6 +48,14 @@ class RegisterHandler extends ServerHandler {
     // ));
   }
 
+  void pm(String message) {
+    add(IrcMessage(
+      prefix: signupBotNick,
+      command: 'PRIVMSG',
+      parameters: [signupChannel, message],
+    ));
+  }
+
   bool checkCmdOrMsg(IrcMessage message, String command, [String msgPrefix = '']) {
     try {
       return message.command == command ||
@@ -86,16 +94,26 @@ class RegisterHandler extends ServerHandler {
           }
           state = _RegisterState.loading;
           final phoneNo = parameters[0].trim();
-          await tdSend(td_fn.SetAuthenticationPhoneNumber(
-            phoneNumber: phoneNo, 
-            settings: td_o.PhoneNumberAuthenticationSettings(
-              allowMissedCall: false,
-              allowFlashCall: false,
-              allowSmsRetrieverApi: false,
-              isCurrentPhoneNumber: false,
-              authenticationTokens: [],
-            ),
-          ));
+          try {
+            await tdSend(td_fn.SetAuthenticationPhoneNumber(
+              phoneNumber: phoneNo, 
+              settings: td_o.PhoneNumberAuthenticationSettings(
+                allowMissedCall: false,
+                allowFlashCall: false,
+                allowSmsRetrieverApi: false,
+                isCurrentPhoneNumber: false,
+                authenticationTokens: [],
+              ),
+            ));
+          } on td_o.Error catch (e) {
+            if (e.code == 400) {
+              pm('The phone number you entered is invalid. Try again.');
+              state = _RegisterState.waitingPhone;
+            }
+            else {
+              rethrow;
+            }
+          }
           return true;
         }
         else if (checkCmdOrMsg(message, 'QR')) {
@@ -118,11 +136,7 @@ class RegisterHandler extends ServerHandler {
             ));
           } on td_o.Error catch (e) {
             if (e.code == 400) {
-              add(IrcMessage(
-                prefix: signupBotNick,
-                command: 'PRIVMSG',
-                parameters: [signupChannel, 'The code you entered is invalid. Try again.'],
-              ));
+              pm('The code you entered is invalid. Try again.');
               state = _RegisterState.waitingCode;
             }
             else {
@@ -164,6 +178,27 @@ class RegisterHandler extends ServerHandler {
         break;
       case _RegisterState.waitingQr:
         break;
+    }
+    if (message.command == 'PRIVMSG' && message.parameters[0] == signupChannel) {
+      // Message not handled above
+      switch (state) {
+        case _RegisterState.waitingPhone:
+          pm('Command unrecognized. Please use the \u0002PHONE\u0002 command.');
+          break;
+        case _RegisterState.waitingCode:
+          pm('Command unrecognized. Please use the \u0002CODE\u0002 command.');
+          break;
+        case _RegisterState.waitingPassword:
+          pm('Command unrecognized. Please use the \u0002PASSWORD\u0002 command.');
+          break;
+        case _RegisterState.waitingQr:
+          pm('Waiting for the QR code...');
+          break;
+        default:
+          pm('Please wait...');
+          break;
+      }
+      return true;
     }
     return false;
   }
