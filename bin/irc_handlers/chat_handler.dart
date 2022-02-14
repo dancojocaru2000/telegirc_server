@@ -581,6 +581,9 @@ class ChatHandler extends ServerHandler {
           }
         }
       },
+      isMessageScreenshotTaken: (st) {
+        ircMsg += '[Screenshot taken!]';
+      },
       otherwise: (_) {
         ircMsg += '[Unable to process]';
       }
