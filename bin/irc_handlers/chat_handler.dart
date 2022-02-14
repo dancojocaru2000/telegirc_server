@@ -543,6 +543,44 @@ class ChatHandler extends ServerHandler {
       isMessageUnsupported: (_) {
         ircMsg += '[Unsupported by TelegIRC]';
       },
+      isMessageLocation: (location) {
+        ircMsg += '[Location] ';
+        final latLng = '${location.location!.latitude},${location.location!.longitude}';
+        ircMsg += latLng;
+        if (location.location!.horizontalAccuracy != 0) {
+          ircMsg += ', ${location.location!.horizontalAccuracy} m accuracy';
+        }
+        if (location.heading != 0) {
+          ircMsg += ', heading ';
+          if (location.heading >= 337.5 || location.heading < 22.5) {
+            ircMsg += 'North';
+          }
+          else if (location.heading < 67.5) {
+            ircMsg += 'North-East';
+          }
+          else if (location.heading < 112.5) {
+            ircMsg += 'East';
+          }
+          else if (location.heading < 157.5) {
+            ircMsg += 'South-East';
+          }
+          else if (location.heading < 202.5) {
+            ircMsg += 'South';
+          }
+          else if (location.heading < 247.5) {
+            ircMsg += 'South-West';
+          }
+          else if (location.heading < 292.5) {
+            ircMsg += 'West';
+          }
+          else if (location.heading < 337.5) {
+            ircMsg += 'North-West';
+          }
+          else {
+            ircMsg += 'unknown, report this error please';
+          }
+        }
+      },
       otherwise: (_) {
         ircMsg += '[Unable to process]';
       }
