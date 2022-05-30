@@ -594,6 +594,7 @@ class SocketManager {
           '  #telegirc-dir == Directory of channels',
           '  #telegirc-settings == Change TelegIRC settings',
           '  #telegirc-logout == Log out from TelegIRC and remove Telegram account access',
+          '  #${telegramUser.username.isEmpty ? telegramUser.id : "@" + telegramUser.username} == Saved Messages',
           '',
           'Check the GitHub page for source code and a basic manual:',
           'https://github.com/dancojocaru2000/telegirc_server',
