@@ -392,7 +392,9 @@ class ChatHandler extends ServerHandler {
           command: 'PRIVMSG',
           parameters: [channel, '== Message Recall ==']
         ));
-        await Future.wait(messages.reversed.map((message) => tdMsgToIrc(channel, message)));
+        for (final message in messages.reversed) {
+          await tdMsgToIrc(channel, message);
+        }
         add(IrcMessage(
           prefix: chatBotNick,
           command: 'PRIVMSG',
