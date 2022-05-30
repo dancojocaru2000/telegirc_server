@@ -192,7 +192,7 @@ class IrcRplEndOfWho extends IrcNumericReply {
 class IrcRplNowAway extends IrcNumericReply {
   IrcRplNowAway(String serverName, String client)
       : super(serverName, 306, [client, 'You are now away'],
-            messageName: 'RPL_BOWAWAY');
+            messageName: 'RPL_NOWAWAY');
   factory IrcRplNowAway.withLocalHostname(String client)
     => IrcRplNowAway(Platform.localHostname, client);
 }
