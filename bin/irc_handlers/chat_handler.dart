@@ -451,51 +451,51 @@ class ChatHandler extends ServerHandler {
     ircMsg += '\u000314[id: ${msg.id}]\u0003 ';
 
     td_o.FormattedText? fmtTxt;
-    msg.content!.match(
-      isMessageAnimatedEmoji: (ae) {
+    await msg.content!.match(
+      isMessageAnimatedEmoji: (ae) async {
         ircMsg += ae.emoji;
       },
-      isMessageAnimation: (a) {
+      isMessageAnimation: (a) async {
         if (a.isSecret) {
           ircMsg += '[Secret] ';
         }
         ircMsg += '[Animation] ';
         fmtTxt = a.caption;
       },
-      isMessageAudio: (a) {
+      isMessageAudio: (a) async {
         ircMsg += '[Audio] ';
         fmtTxt = a.caption;
       },
-      isMessageDice: (d) {
+      isMessageDice: (d) async {
         ircMsg += '[Dice] ${d.value}';
       },
-      isMessageExpiredPhoto: (e) {
+      isMessageExpiredPhoto: (e) async {
         ircMsg += '[Expired Photo]';
       },
-      isMessageExpiredVideo: (e) {
+      isMessageExpiredVideo: (e) async {
         ircMsg += '[Expired Video]';
       },
-      isMessagePhoto: (p) {
+      isMessagePhoto: (p) async {
         if (p.isSecret) {
           ircMsg += '[Secret] ';
         }
         ircMsg += '[Photo] ';
         fmtTxt = p.caption;
       },
-      isMessageSticker: (s) {
+      isMessageSticker: (s) async {
         ircMsg += '[Sticker] ${s.sticker!.emoji}';
       },
-      isMessageText: (t) {
+      isMessageText: (t) async {
         fmtTxt = t.text;
       },
-      isMessageVideo: (v) {
+      isMessageVideo: (v) async {
         if (v.isSecret) {
           ircMsg += '[Secret] ';
         }
         ircMsg += '[Video] ';
         fmtTxt = v.caption;
       },
-      isMessageContact: (contact) {
+      isMessageContact: (contact) async {
         ircMsg += '[Contact] ';
         final fields = [];
         if (contact.contact!.userId > 0) {
@@ -509,13 +509,13 @@ class ChatHandler extends ServerHandler {
         }
         ircMsg += fields.join(', ');
       },
-      isMessageGame: (game) {
+      isMessageGame: (game) async {
         ircMsg += '[Game] ${game.game!.title}';
       },
-      isMessageGameScore: (gs) {
+      isMessageGameScore: (gs) async {
         ircMsg += '[Game Score] New Score: ${gs.score}';
       },
-      isMessageCall: (call) {
+      isMessageCall: (call) async {
         if (call.isVideo) {
           ircMsg += '[Video Call] ';
         }
@@ -537,13 +537,13 @@ class ChatHandler extends ServerHandler {
           otherwise: (_) {},
         );
       },
-      isMessageChatChangeTitle: (titleChange) {
+      isMessageChatChangeTitle: (titleChange) async {
         ircMsg += '[Chat Title Change] ${titleChange.title}';
       },
-      isMessageUnsupported: (_) {
+      isMessageUnsupported: (_) async {
         ircMsg += '[Unsupported by TelegIRC]';
       },
-      isMessageLocation: (location) {
+      isMessageLocation: (location) async {
         ircMsg += '[Location] ';
         final latLng = '${location.location!.latitude},${location.location!.longitude}';
         ircMsg += latLng;
@@ -581,11 +581,17 @@ class ChatHandler extends ServerHandler {
           }
         }
       },
-      isMessageScreenshotTaken: (st) {
+      isMessageScreenshotTaken: (st) async {
         ircMsg += '[Screenshot taken!]';
       },
-      otherwise: (_) {
-        ircMsg += '[Unable to process]';
+      isMessageContactRegistered: (cr) async {
+        final senderId = (msg.senderId as td_o.MessageSenderUser).userId;
+        final sender = await tdSend<td_o.User>(td_fn.GetUser(userId: senderId));
+        final senderName = sender.lastName.isEmpty ? sender.firstName : '${sender.firstName} ${sender.lastName}';
+        ircMsg += '[$senderName joined Telegram!]';
+      },
+      otherwise: (_) async {
+        ircMsg += '[Unable to process, message kind: ${msg.content.runtimeType}]';
       }
     );
 
